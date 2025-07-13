@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="licon-banner.png" alt="Licon Banner" width="60%"/>
+</div>
+
 # 🤖 **Licon — The LinkedIn Connector Toolkit**
 
 > Effortlessly grow your LinkedIn network by connecting with employees of any company — directly from the "People" page.
