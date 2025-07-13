@@ -29,14 +29,10 @@
    - **Mac:** `Cmd + Option + J`
 
 3. **Paste the Script**
-   - Paste the script directly (see below), **OR**
-   - Load from GitHub raw content:
-
-```js
-fetch('https://raw.githubusercontent.com/AnshumanAtrey/licon/refs/heads/main/browser-script.js')
-  .then(res => res.text())
-  .then(code => eval(code));
-```
+   - Go to the raw script link:
+     [browser-script.js (raw)](https://raw.githubusercontent.com/AnshumanAtrey/licon/refs/heads/main/browser-script.js)
+   - Copy all the code from that page.
+   - Paste it into your browser's developer console.
 
 4. **Hit Enter and Let Licon Work!**
 
