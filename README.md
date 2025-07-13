@@ -33,11 +33,10 @@
    - Load from GitHub raw content:
 
 ```js
-fetch('https://raw.githubusercontent.com/yourusername/licon/main/licon.js')
+fetch('https://raw.githubusercontent.com/AnshumanAtrey/licon/refs/heads/main/browser-script.js')
   .then(res => res.text())
   .then(code => eval(code));
 ```
-> **Replace `yourusername` with your actual GitHub username.**
 
 4. **Hit Enter and Let Licon Work!**
 
