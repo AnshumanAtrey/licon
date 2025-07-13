@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="/assets/licon-banner.png" alt="Licon Banner" width="60%"/>
+  <img src="/assets/licon-banner.png" alt="Licon Banner" width="100%"/>
 </div>
 
 # 🤖 **Licon — The LinkedIn Connector Toolkit**
