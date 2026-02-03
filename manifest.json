@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "LICON - LinkedIn Connector Toolkit",
+  "version": "1.0.0",
+  "description": "Automate LinkedIn connection requests from company pages and search results - grow your network effortlessly",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "*://www.linkedin.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+
+  "side_panel": {
+    "default_path": "src/ui/sidepanel.html"
+  },
+  "action": {
+    "default_title": "LICON - LinkedIn Connector Toolkit"
+  },
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/profile-connector.js"],
+      "matches": ["*://www.linkedin.com/*"]
+    }
+  ],
+  "homepage_url": "https://github.com/AnshumanAtrey/licon"
+}

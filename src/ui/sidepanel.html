@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      --bg: #f0eeeb;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --text-secondary: #6b6b6b;
+      --text-dim: #a0a0a0;
+      --accent: #1a1a1a;
+      --border: #e2e0dc;
+      --radius: 10px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 100%;
+      height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Content */
+    .content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Card */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .card:last-child {
+      margin-bottom: 0;
+    }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-bar .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .status-dot.active {
+      background: #34a853;
+      box-shadow: 0 0 0 3px rgba(52, 168, 83, 0.15);
+    }
+
+    .status-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .pulse { animation: pulse-glow 2s infinite; }
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .btn-reset {
+      margin-left: auto;
+      background: var(--bg);
+      border: none;
+      color: var(--text-dim);
+      font-size: 15px;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s ease;
+    }
+
+    .btn-reset:hover {
+      color: var(--text);
+      background: var(--border);
+    }
+
+    /* Stats */
+    .stats-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .stat {
+      flex: 1;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 14px 8px;
+      text-align: center;
+    }
+
+    .stat-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      display: block;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .stat-key {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    /* Skip breakdown */
+    .skip-breakdown {
+      margin-top: 12px;
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.8;
+    }
+
+    .skip-breakdown span {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    /* Company info */
+    .company-info {
+      display: none;
+      margin-top: 16px;
+      padding: 12px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--bg);
+      border-radius: 8px;
+    }
+
+    .company-info strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .btn-start {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-start:hover:not(:disabled) {
+      background: #333;
+    }
+
+    .btn-stop {
+      background: var(--bg);
+      color: var(--text-secondary);
+      border: 1.5px solid var(--border);
+    }
+
+    .btn-stop:hover:not(:disabled) {
+      border-color: var(--text-dim);
+      color: var(--text);
+    }
+
+    .page-info {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 12px;
+    }
+
+    .page-info span {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    /* Settings */
+    .setting-group {
+      margin-bottom: 20px;
+    }
+
+    .setting-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .setting-group-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0eeeb;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-row label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .setting-input {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--text);
+      width: 76px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      transition: border-color 0.15s;
+    }
+
+    .setting-input:focus {
+      outline: none;
+      border-color: var(--text);
+    }
+
+    .setting-input::placeholder { color: var(--text-dim); }
+
+    .setting-hint {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 6px;
+      margin-bottom: 4px;
+    }
+
+    /* Toggle */
+    .toggle {
+      position: relative;
+      width: 40px;
+      height: 24px;
+      background: var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    .toggle.active { background: var(--accent); }
+
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+
+    .toggle.active::after { transform: translateX(16px); }
+
+    /* Failed Profiles */
+    .failed-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .failed-count {
+      font-size: 12px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .failed-count strong {
+      color: var(--text);
+    }
+
+    .failed-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .failed-actions button {
+      background: var(--bg);
+      border: none;
+      color: var(--text-secondary);
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .failed-actions button:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .failed-list {
+      max-height: 180px;
+      overflow-y: auto;
+      margin-top: 12px;
+    }
+
+    .failed-item {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--bg);
+      font-size: 12px;
+    }
+
+    .failed-item:last-child { border-bottom: none; }
+
+    .failed-item a {
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .failed-item a:hover { text-decoration: underline; }
+
+    .failed-item .reason {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-left: 6px;
+    }
+
+    .failed-item .meta {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .failed-empty {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 12px;
+    }
+
+    /* Footer */
+    .footer {
+      padding: 16px 20px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .footer a:hover {
+      color: var(--text);
+    }
+
+    /* Intro screen */
+    .intro {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .intro-hero {
+      text-align: center;
+      padding: 28px 20px 20px;
+    }
+
+    .intro-hero .logo {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+
+    .intro-hero h2 {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 6px;
+      letter-spacing: -0.3px;
+    }
+
+    .intro-hero p {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .intro-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .intro-step {
+      display: flex;
+      gap: 14px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--bg);
+    }
+
+    .intro-step:last-child {
+      border-bottom: none;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      background: var(--bg);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+
+    .step-content h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .step-content p {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    .intro-examples {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+
+    .intro-examples strong {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .intro-examples code {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 10px;
+      background: var(--bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text-secondary);
+    }
+
+    .intro-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 14px;
+      border-radius: var(--radius);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+    }
+
+    .intro-btn:hover { background: #333; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  </style>
+</head>
+<body>
+
+  <div class="content" id="mainContent">
+    <div id="notLinkedInSection" class="intro" style="display: none;">
+
+      <div class="card intro-hero">
+        <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
+        <h2>LICON</h2>
+        <p>Automate LinkedIn connection requests from any company page or search results.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-label">How it works</div>
+        <div class="intro-steps">
+          <div class="intro-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h3>Open a LinkedIn page</h3>
+              <p>Go to a company's People tab or use LinkedIn search with filters.</p>
+            </div>
+          </div>
+          <div class="intro-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h3>Configure settings</h3>
+              <p>Set profile limits, delay range, and behavior options.</p>
+            </div>
+          </div>
+          <div class="intro-step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h3>Hit Start</h3>
+              <p>LICON scrolls through profiles and sends connection requests automatically.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-label">Supported pages</div>
+        <div class="intro-examples">
+          <strong>Company people</strong><br>
+          <code>linkedin.com/company/google/people</code>
+          <br><br>
+          <strong>Search results</strong><br>
+          <code>linkedin.com/search/results/people?...</code>
+        </div>
+      </div>
+
+      <div class="card">
+        <button class="intro-btn" id="openLinkedInBtn">Open LinkedIn</button>
+      </div>
+
+    </div>
+
+    <div id="appSection">
+
+      <!-- Status + Stats -->
+      <div class="card">
+        <div class="status-bar">
+          <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Ready</span>
+          <button class="btn-reset" id="resetBtn" title="Reset stats">↺</button>
+        </div>
+
+        <div id="companyInfo" class="company-info">
+          <strong id="companyName"></strong>
+          <span id="companyUrl"></span>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-val" id="processedCount">0</span>
+            <span class="stat-key">Processed</span>
+          </div>
+          <div class="stat">
+            <span class="stat-val" id="connectedCount">0</span>
+            <span class="stat-key">Connected</span>
+          </div>
+          <div class="stat">
+            <span class="stat-val" id="skippedCount">0</span>
+            <span class="stat-key">Skipped</span>
+          </div>
+          <div class="stat">
+            <span class="stat-val" id="errorCount">0</span>
+            <span class="stat-key">Errors</span>
+          </div>
+        </div>
+
+        <div id="skipReasonsSection" class="skip-breakdown" style="display: none;">
+          Pending <span id="skipPending">0</span> &middot;
+          Follow <span id="skipFollowOnly">0</span> &middot;
+          No Button <span id="skipNoButton">0</span> &middot;
+          Connected <span id="skipConnected">0</span>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="card">
+        <div class="card-label">Settings</div>
+
+        <div class="setting-group">
+          <div class="setting-group-label">Limits</div>
+          <div class="setting-row">
+            <label>Profiles</label>
+            <input type="number" class="setting-input" id="profileLimit" value="0" min="0" max="1000" placeholder="0">
+          </div>
+          <div class="setting-row">
+            <label>Pages</label>
+            <input type="number" class="setting-input" id="pageLimit" value="0" min="0" max="100" placeholder="0">
+          </div>
+          <div class="setting-hint">0 = no limit</div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-group-label">Delay</div>
+          <div class="setting-row">
+            <label>Min (ms)</label>
+            <input type="number" class="setting-input" id="minDelay" value="2000" min="500" max="30000">
+          </div>
+          <div class="setting-row">
+            <label>Max (ms)</label>
+            <input type="number" class="setting-input" id="maxDelay" value="8000" min="1000" max="60000">
+          </div>
+          <div class="setting-hint">Random delay between each profile</div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-group-label">Behavior</div>
+          <div class="setting-row">
+            <label>Skip already connected</label>
+            <div class="toggle active" id="skipConnectedToggle"></div>
+          </div>
+          <div class="setting-row">
+            <label>Auto scroll to load all</label>
+            <div class="toggle active" id="autoScrollToggle"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Failed Profiles -->
+      <div class="card" id="failedProfilesSection">
+        <div class="failed-header">
+          <div class="failed-count">Failed <strong id="failedCountBadge">0</strong></div>
+          <div class="failed-actions">
+            <button id="exportFailedBtn">Export</button>
+            <button id="clearFailedBtn">Clear</button>
+          </div>
+        </div>
+        <div class="failed-list" id="failedProfilesList">
+          <div class="failed-empty">No failed profiles</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="card">
+        <div class="controls">
+          <button class="btn btn-start" id="startBtn">Start</button>
+          <button class="btn btn-stop" id="stopBtn" disabled>Stop</button>
+        </div>
+        <div class="page-info" id="pageInfo" style="display: none;">
+          Page <span id="currentPage">1</span> / <span id="totalPages">1</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    by <a href="https://atrey.dev" target="_blank">atrey.dev</a>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
