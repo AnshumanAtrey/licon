@@ -104,7 +104,6 @@ class LiconBackground {
         case 'PAGE_INFO_UPDATE':
           console.log('📄 LICON: Page info update:', message.data);
           this.pageInfo = message.data;
-          this.pagesProcessed = (this.pagesProcessed || 0);
           sendResponse({ success: true });
           break;
 
@@ -311,28 +310,31 @@ class LiconBackground {
   }
 
   async handleConnectionAttempt(data, tabId) {
-    // Handle connection attempt in background
-    // This could involve opening new tabs for profiles that need "More" -> "Connect"
-    
     if (data.needsProfileVisit) {
-      // Open profile in new background tab
       const newTab = await chrome.tabs.create({
         url: data.profileUrl,
-        active: false // Don't steal focus
+        active: false
       });
 
-      // Wait for tab to load and inject connection script
-      setTimeout(async () => {
-        try {
-          await chrome.scripting.executeScript({
+      // Wait for tab to fully load before injecting
+      const onTabUpdated = (updatedTabId, changeInfo) => {
+        if (updatedTabId === newTab.id && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(onTabUpdated);
+          chrome.scripting.executeScript({
             target: { tabId: newTab.id },
             files: ['src/content/profile-connector.js']
+          }).catch(error => {
+            console.error('Failed to inject profile connector:', error);
+            chrome.tabs.remove(newTab.id);
           });
-        } catch (error) {
-          console.error('Failed to inject profile connector:', error);
-          chrome.tabs.remove(newTab.id);
         }
-      }, 2000);
+      };
+      chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+      // Safety timeout - clean up listener if tab never loads
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+      }, 30000);
     }
   }
 
@@ -450,8 +452,10 @@ class LiconBackground {
     // Restore state if extension was restarted
     const result = await chrome.storage.local.get(['liconState', 'liconFailedProfiles']);
     if (result.liconState) {
-      this.isRunning = result.liconState.isRunning || false;
-      this.currentCompany = result.liconState.currentCompany || null;
+      // Never restore isRunning - content scripts are dead after worker restart
+      // User must click Start again to resume
+      this.isRunning = false;
+      this.currentCompany = null;
       this.stats = result.liconState.stats || this.stats;
 
       // Ensure skipReasons exists
@@ -463,6 +467,17 @@ class LiconBackground {
           followOnly: 0,
           other: 0
         };
+      }
+
+      // Clear stale running state from storage
+      if (result.liconState.isRunning) {
+        await chrome.storage.local.set({
+          liconState: {
+            isRunning: false,
+            currentCompany: null,
+            stats: this.stats
+          }
+        });
       }
     }
 

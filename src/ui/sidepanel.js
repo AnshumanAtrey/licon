@@ -324,6 +324,7 @@ class LiconSidePanel {
       statusText.textContent = 'Ready';
       statusText.classList.remove('pulse');
       pageInfo.style.display = 'none';
+      document.getElementById('companyInfo').style.display = 'none';
     }
 
     // Update buttons
@@ -533,11 +534,16 @@ class LiconSidePanel {
     }
   }
 
+  escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   renderFailedProfiles() {
     const listContainer = document.getElementById('failedProfilesList');
     const badge = document.getElementById('failedCountBadge');
 
-    // Update badge count
     badge.textContent = this.failedProfiles.length;
 
     if (this.failedProfiles.length === 0) {
@@ -545,18 +551,24 @@ class LiconSidePanel {
       return;
     }
 
-    // Render each failed profile (show most recent first, limit to 20)
     const profilesToShow = [...this.failedProfiles].reverse().slice(0, 20);
 
-    listContainer.innerHTML = profilesToShow.map(profile => `
-      <div class="failed-item">
-        <a href="${profile.profileUrl}" target="_blank">${profile.name}</a>
-        <span class="reason">${this.formatReason(profile.reason)}</span>
-        <div class="meta">${profile.buttonText || ''} ${profile.degree ? '· ' + profile.degree : ''}</div>
-      </div>
-    `).join('');
+    listContainer.innerHTML = profilesToShow.map(profile => {
+      const name = this.escapeHtml(profile.name || 'Unknown');
+      const url = this.escapeHtml(profile.profileUrl || '#');
+      const reason = this.escapeHtml(this.formatReason(profile.reason));
+      const meta = this.escapeHtml(
+        (profile.buttonText || '') + (profile.degree ? ' · ' + profile.degree : '')
+      );
+      return `
+        <div class="failed-item">
+          <a href="${url}" target="_blank">${name}</a>
+          <span class="reason">${reason}</span>
+          <div class="meta">${meta}</div>
+        </div>
+      `;
+    }).join('');
 
-    // Show count if there are more
     if (this.failedProfiles.length > 20) {
       listContainer.innerHTML += `
         <div class="failed-empty">

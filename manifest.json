@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LICON - LinkedIn Connector Toolkit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automate LinkedIn connection requests from company pages and search results - grow your network effortlessly",
   "permissions": [
     "activeTab",

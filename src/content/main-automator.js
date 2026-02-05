@@ -1,8 +1,13 @@
 // LICON Main Content Script - Accurate LinkedIn Automation
 (function() {
 if (window.__liconLoaded) {
-  // Already loaded - but check if URL changed (SPA navigation like search pagination)
-  if (window.__liconLastUrl !== window.location.href) {
+  // Check if extension context is still valid (invalidated after extension reload)
+  if (!chrome.runtime?.id) {
+    console.log('🔄 LICON: Extension context invalidated, re-initializing...');
+    window.__liconLoaded = false;
+    // Fall through to re-initialize
+  } else if (window.__liconLastUrl !== window.location.href) {
+    // URL changed (SPA navigation like search pagination)
     console.log('🔄 LICON: URL changed (SPA navigation), re-initializing on new page...');
     window.__liconLastUrl = window.location.href;
     if (window.liconAutomator) {
@@ -11,10 +16,11 @@ if (window.__liconLoaded) {
       window.liconAutomator.isRunning = false;
       window.liconAutomator.init();
     }
+    return;
   } else {
     console.log('🔁 LICON: Content script already loaded, skipping');
+    return;
   }
-  return;
 }
 window.__liconLoaded = true;
 window.__liconLastUrl = window.location.href;
@@ -123,6 +129,17 @@ class LiconMainAutomator {
         case 'AUTOMATION_STARTED':
           console.log('🚀 LICON: Content script received AUTOMATION_STARTED - starting automation...');
           console.log('🔍 LICON: Current isRunning state:', this.isRunning);
+          if (this.isRunning) {
+            console.log('⚠️ LICON: Already running, skipping duplicate start');
+            sendResponse({ success: true, message: 'Already running' });
+            break;
+          }
+          // Reset counters for new session
+          this.pagesProcessed = 0;
+          this.totalProfilesProcessed = 0;
+          this.processed.clear();
+          // Refresh settings in case user changed them
+          this.settings = await this.sendMessage({ type: 'GET_SETTINGS' }) || this.settings;
           await this.startAutomation();
           console.log('✅ LICON: Automation started successfully');
           sendResponse({ success: true, message: 'Automation started' });
@@ -254,26 +271,31 @@ class LiconMainAutomator {
     }
 
     try {
-      // Phase 1: Scroll and load all profiles
-      await this.scrollAndLoadAll();
+      if (this.pageType === 'company') {
+        // Company pages: process visible profiles first, then load more (batch approach)
+        await this.processCompanyPageInBatches();
+      } else {
+        // Search pages: all results are visible on page, just scroll to load lazy content
+        await this.scrollAndLoadAll();
 
-      // Re-detect page info after scroll (pagination may have updated)
-      this.detectPageInfo();
+        // Re-detect page info after scroll (pagination may have updated)
+        this.detectPageInfo();
 
-      // Report updated page info
-      this.sendMessage({
-        type: 'PAGE_INFO_UPDATE',
-        data: { currentPage: this.currentPage, totalPages: this.totalPages }
-      });
+        // Report updated page info
+        this.sendMessage({
+          type: 'PAGE_INFO_UPDATE',
+          data: { currentPage: this.currentPage, totalPages: this.totalPages }
+        });
 
-      // Phase 2: Process all profiles
-      await this.processAllProfiles();
+        // Process all visible profiles
+        await this.processAllProfiles();
+      }
 
       // Increment pages processed counter and notify background
       this.pagesProcessed++;
       this.updateStats({ pageCompleted: true });
 
-      // Phase 3: Handle pagination
+      // Handle pagination (next page button)
       await this.handlePagination();
 
     } catch (error) {
@@ -287,6 +309,100 @@ class LiconMainAutomator {
   stopAutomation() {
     this.isRunning = false;
     console.log('🔥 LICON: Automation stopped');
+  }
+
+  async processCompanyPageInBatches() {
+    console.log('👥 LICON: Processing company page in batches (visible-first)...');
+
+    const profileLimit = this.settings.profileLimit || 0;
+    let batchNumber = 0;
+
+    while (this.isRunning) {
+      batchNumber++;
+
+      // Collect currently visible unprocessed profiles
+      const profiles = this.collectCompanyProfiles();
+
+      if (profiles.length === 0) {
+        // No unprocessed profiles visible — try loading more
+        const loaded = await this.loadMoreCompanyProfiles();
+        if (!loaded) {
+          console.log('✅ LICON: All profiles on this page processed');
+          break;
+        }
+        continue; // Re-collect after loading more
+      }
+
+      console.log(`📦 LICON: Batch ${batchNumber} — ${profiles.length} unprocessed profiles`);
+
+      for (let i = 0; i < profiles.length && this.isRunning; i++) {
+        const profile = profiles[i];
+
+        // Check profile limit (across all pages)
+        if (profileLimit > 0 && this.totalProfilesProcessed >= profileLimit) {
+          console.log(`🛑 LICON: Profile limit reached (${this.totalProfilesProcessed}/${profileLimit})`);
+          await this.sendMessage({ type: 'STOP_AUTOMATION' });
+          this.isRunning = false;
+          break;
+        }
+
+        try {
+          await this.processProfile(profile);
+          this.totalProfilesProcessed++;
+
+          // Delay between profiles (skip after last in batch — loading more provides natural delay)
+          if (i < profiles.length - 1) {
+            const minDelay = this.settings.minDelay || 2000;
+            const maxDelay = this.settings.maxDelay || 8000;
+            const delay = this.randomDelay(minDelay, maxDelay);
+            console.log(`⏱️ LICON: Waiting ${delay}ms before next profile...`);
+            await this.sleep(delay);
+          }
+        } catch (error) {
+          console.error(`❌ LICON: Error processing ${profile.name}:`, error);
+          this.updateStats({ error: true });
+        }
+      }
+    }
+
+    console.log(`📊 LICON: Company page batch processing complete — ${this.totalProfilesProcessed} total profiles processed`);
+  }
+
+  async loadMoreCompanyProfiles() {
+    // Try clicking "Show more results" button
+    const showMoreBtn = document.querySelector('.scaffold-finite-scroll__load-button');
+
+    if (showMoreBtn && showMoreBtn.offsetParent !== null && !showMoreBtn.disabled) {
+      console.log('📜 LICON: Clicking "Show more results"...');
+      showMoreBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await this.sleep(1000);
+      showMoreBtn.click();
+      await this.sleep(this.randomDelay(3000, 5000));
+      return true;
+    }
+
+    // Try scrolling down in case lazy loading triggers new content
+    const heightBefore = document.body.scrollHeight;
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    await this.sleep(this.randomDelay(2000, 3000));
+
+    // Check if scrolling loaded new content
+    if (document.body.scrollHeight > heightBefore) {
+      return true;
+    }
+
+    // Check one more time for Show more button (may have appeared after scroll)
+    const showMoreAfterScroll = document.querySelector('.scaffold-finite-scroll__load-button');
+    if (showMoreAfterScroll && showMoreAfterScroll.offsetParent !== null && !showMoreAfterScroll.disabled) {
+      console.log('📜 LICON: "Show more results" appeared after scroll, clicking...');
+      showMoreAfterScroll.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await this.sleep(1000);
+      showMoreAfterScroll.click();
+      await this.sleep(this.randomDelay(3000, 5000));
+      return true;
+    }
+
+    return false;
   }
 
   async scrollAndLoadAll() {
@@ -605,46 +721,60 @@ class LiconMainAutomator {
       await this.sleep(this.randomDelay(500, 1000));
       
       // Process based on button type
-      if (profile.buttonText.toLowerCase().includes('connect')) {
+      const btn = profile.buttonText.toLowerCase();
+
+      if (btn.includes('connect')) {
         console.log(`🔗 LICON: Direct connect available for ${profile.name}`);
         await this.handleDirectConnect(profile);
-        
-      } else if (profile.buttonText.toLowerCase().includes('message')) {
-        console.log(`💬 LICON: Message button detected for ${profile.name} - will open profile`);
-        await this.handleMessageProfile(profile);
-        
-      } else if (profile.buttonText.toLowerCase().includes('follow')) {
+
+      } else if (btn.includes('message')) {
+        // Message button: check degree to determine if actually connected
+        // On company pages, 2nd/3rd degree profiles often show Message (InMail/Open Profile)
+        const isFirstDegree = profile.degree && profile.degree.includes('1st');
+        if (isFirstDegree) {
+          console.log(`💬 LICON: Skipping ${profile.name} - Message + 1st degree = already connected`);
+          this.updateStats({ skipped: true, skipReason: 'alreadyConnected' });
+        } else {
+          console.log(`💬 LICON: ${profile.name} has Message button but is ${profile.degree} - opening profile for More → Connect`);
+          await this.handleFollowProfile(profile);
+        }
+
+      } else if (btn.includes('follow') && !btn.includes('following')) {
         console.log(`👥 LICON: Follow button detected for ${profile.name} - will open profile for More → Connect`);
         await this.handleFollowProfile(profile);
 
-      } else if (profile.buttonText.toLowerCase().includes('pending')) {
+      } else if (btn.includes('pending')) {
         console.log(`⏳ LICON: Skipping ${profile.name} - Connection already pending`);
         this.updateStats({ skipped: true, skipReason: 'pending' });
 
-      } else if (profile.buttonText.toLowerCase().includes('following')) {
+      } else if (btn.includes('following')) {
         console.log(`✅ LICON: Skipping ${profile.name} - Already following`);
         this.updateStats({ skipped: true, skipReason: 'alreadyConnected' });
-        
+
+      } else if (btn === 'unknown' && !profile.buttonElement) {
+        console.log(`⚠️ LICON: Skipping ${profile.name} - No action button found`);
+        this.updateStats({ skipped: true, skipReason: 'noConnectButton' });
+
       } else {
         console.log(`❓ LICON: Unknown button type for ${profile.name}: "${profile.buttonText}" - attempting to click anyway`);
 
-        // Try clicking the button anyway - might be a connect button with different text
         try {
           profile.buttonElement.click();
           await this.sleep(this.randomDelay(1500, 2500));
 
-          // Check if a modal appeared
           const modal = document.querySelector('[data-test-modal-id="send-invite-modal"]') ||
                         document.querySelector('.send-invite') ||
                         document.querySelector('.artdeco-modal-overlay--is-top-layer');
 
           if (modal) {
             console.log(`🔗 LICON: Connect modal appeared for ${profile.name} - processing...`);
-            await this.handleConnectionModal(profile.name);
+            const success = await this.handleConnectionModal(profile.name, profile);
+            if (!success) {
+              this.updateStats({ error: true });
+            }
           } else {
             console.log(`❓ LICON: No modal appeared for ${profile.name} - button might not be connect`);
             this.updateStats({ skipped: true, skipReason: 'noConnectButton' });
-            // Add to failed profiles for later retry
             this.addFailedProfile(profile, 'noConnectButton', 'No connect modal appeared after clicking button');
           }
         } catch (error) {
@@ -663,32 +793,23 @@ class LiconMainAutomator {
   }
 
   async handleDirectConnect(profile) {
-    // Scroll to profile and click connect
     profile.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await this.sleep(this.randomDelay(800, 1500));
 
     profile.buttonElement.click();
     this.updateStats({ attempted: true });
 
-    // Wait for modal and handle it
     await this.sleep(this.randomDelay(1500, 2500));
     const success = await this.handleConnectionModal(profile.name, profile);
 
     if (!success) {
-      // Modal didn't appear or send failed - add to failed queue
+      this.updateStats({ error: true });
       this.addFailedProfile(profile, 'connectFailed', 'Direct connect button clicked but connection not sent');
     }
   }
 
-  async handleMessageProfile(profile) {
-    // These profiles need to be opened in new tab to access "More" -> "Connect"
-    console.log(`${profile.name} has Message button - opening profile for More → Connect...`);
-    await this.openProfileForConnect(profile);
-  }
-
   async handleFollowProfile(profile) {
-    // Follow button profiles also need "More" -> "Connect" via profile page
-    console.log(`${profile.name} has Follow button - opening profile for More → Connect...`);
+    console.log(`🔗 LICON: ${profile.name} (${profile.buttonText}) - opening profile for More → Connect...`);
     await this.openProfileForConnect(profile);
   }
 
@@ -707,7 +828,6 @@ class LiconMainAutomator {
   }
 
   async handleConnectionModal(profileName, profile = null) {
-    // Look for the connection modal using exact LinkedIn selectors
     const modal = document.querySelector('[data-test-modal-id="send-invite-modal"]') ||
                   document.querySelector('.send-invite') ||
                   document.querySelector('.artdeco-modal-overlay--is-top-layer');
@@ -717,9 +837,41 @@ class LiconMainAutomator {
       return false;
     }
 
-    // Click "Send without a note" using exact LinkedIn selector
+    const modalText = modal.textContent || '';
+
+    // Check for "How do you know" / email required modal
+    if (modalText.includes('How do you know') || modalText.includes('email address')) {
+      console.log(`⚠️ LICON: Email required to connect with ${profileName}`);
+      const closeBtn = modal.querySelector('[data-test-modal-close-btn]') ||
+                       modal.querySelector('.artdeco-modal__dismiss');
+      if (closeBtn) closeBtn.click();
+      if (profile) {
+        this.addFailedProfile(profile, 'emailRequired', 'LinkedIn requires email to connect');
+      }
+      return false;
+    }
+
+    // Check for weekly invitation limit
+    if (modalText.includes('invitation limit') || modalText.includes('weekly limit')) {
+      console.log(`🛑 LICON: Weekly invitation limit reached`);
+      const closeBtn = modal.querySelector('[data-test-modal-close-btn]') ||
+                       modal.querySelector('.artdeco-modal__dismiss');
+      if (closeBtn) closeBtn.click();
+      if (profile) {
+        this.addFailedProfile(profile, 'weeklyLimit', 'Weekly invitation limit reached');
+      }
+      // Stop automation entirely - no point continuing
+      await this.sendMessage({ type: 'STOP_AUTOMATION' });
+      this.isRunning = false;
+      return false;
+    }
+
+    // Look for send button - try multiple patterns
     const sendBtn = modal.querySelector('button[aria-label*="Send without a note"]') ||
-                    modal.querySelector('.artdeco-button--primary[aria-label*="Send"]');
+                    modal.querySelector('button[aria-label*="Send now"]') ||
+                    [...modal.querySelectorAll('button.artdeco-button--primary')].find(btn =>
+                      btn.textContent.includes('Send')
+                    );
 
     if (sendBtn) {
       sendBtn.click();
@@ -728,13 +880,10 @@ class LiconMainAutomator {
       await this.sleep(1000);
       return true;
     } else {
-      // Fallback: close modal using exact LinkedIn selector
       const closeBtn = modal.querySelector('[data-test-modal-close-btn]') ||
                        modal.querySelector('.artdeco-modal__dismiss');
       if (closeBtn) closeBtn.click();
       console.log(`❌ Could not send connection to ${profileName}`);
-
-      // Add to failed profiles if we have profile data
       if (profile) {
         this.addFailedProfile(profile, 'modalSendFailed', 'Could not find send button in modal');
       }
@@ -790,10 +939,9 @@ class LiconMainAutomator {
       // Clear processed set for new page
       this.processed.clear();
 
-      // Restart automation on new page
-      if (this.isRunning) {
-        await this.startAutomation();
-      }
+      // Reset isRunning so startAutomation can re-enter
+      this.isRunning = false;
+      await this.startAutomation();
     } else {
       console.log('🎉 LICON: All pages completed!');
       // Tell background to stop
@@ -825,7 +973,18 @@ class LiconMainAutomator {
 
   async sendMessage(message) {
     return new Promise((resolve) => {
+      if (!chrome.runtime?.id) {
+        console.error('❌ LICON: Extension context invalidated, cannot send message');
+        this.isRunning = false;
+        resolve(null);
+        return;
+      }
       chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('❌ LICON: Message error:', chrome.runtime.lastError.message);
+          resolve(null);
+          return;
+        }
         resolve(response);
       });
     });

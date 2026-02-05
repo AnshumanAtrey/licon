@@ -52,6 +52,7 @@ class LiconProfileConnector {
       const moreButton = this.findMoreButton();
       if (!moreButton) {
         console.log('No More button found, cannot connect');
+        this.notifyFailure('noMoreButton', 'No More button found on profile');
         return;
       }
 
@@ -64,6 +65,7 @@ class LiconProfileConnector {
       const connectOption = this.findConnectInDropdown();
       if (!connectOption) {
         console.log('No Connect option in dropdown');
+        this.notifyFailure('noConnectInDropdown', 'No Connect option in dropdown menu');
         return;
       }
 
@@ -77,33 +79,40 @@ class LiconProfileConnector {
 
     } catch (error) {
       console.error('Error in profile connection:', error);
+      this.notifyFailure('error', error.message);
     }
   }
 
   findDirectConnectButton() {
-    // Look for primary Connect button using exact LinkedIn classes from reference
-    const connectButtons = [
-      // Primary connect button (from profile_with_connect_button.html)
-      ...document.querySelectorAll('button[aria-label*="Invite"][aria-label*="connect"].artdeco-button--primary'),
-      // Secondary connect button patterns
-      ...document.querySelectorAll('button.artdeco-button--primary')
-    ].filter(btn => 
-      btn.textContent.trim() === 'Connect' && 
-      btn.classList.contains('artdeco-button--primary') &&
-      btn.offsetParent !== null // visible
-    );
+    // IMPORTANT: Scope search to main profile area only
+    // The sidebar ("More profiles for you") has Connect buttons for OTHER people
+    const mainArea = document.querySelector('.scaffold-layout__main') || document;
 
-    return connectButtons[0] || null;
+    // First: look for any button with "Invite ... connect" aria-label (most reliable)
+    const ariaConnect = mainArea.querySelector('button[aria-label*="Invite"][aria-label*="connect"]');
+    if (ariaConnect && ariaConnect.offsetParent !== null) {
+      return ariaConnect;
+    }
+
+    // Fallback: any visible button whose text is exactly "Connect" in main area
+    const allButtons = mainArea.querySelectorAll('button.artdeco-button');
+    for (const btn of allButtons) {
+      if (btn.textContent.trim() === 'Connect' && btn.offsetParent !== null) {
+        return btn;
+      }
+    }
+
+    return null;
   }
 
   findMoreButton() {
-    // Look for More actions button using exact LinkedIn selectors from reference
+    // Scope to main profile area to avoid sidebar elements
+    const mainArea = document.querySelector('.scaffold-layout__main') || document;
+
     const moreButtons = [
-      // More button with overflow icon (from message_button_profile.html)
-      ...document.querySelectorAll('button[aria-label*="More actions"]'),
-      // More button with text
-      ...document.querySelectorAll('button.artdeco-button--secondary')
-    ].filter(btn => 
+      ...mainArea.querySelectorAll('button[aria-label*="More actions"]'),
+      ...mainArea.querySelectorAll('button.artdeco-button--secondary')
+    ].filter(btn =>
       (btn.textContent.trim() === 'More' ||
        btn.querySelector('svg[data-test-icon*="overflow"]')) &&
       btn.offsetParent !== null // visible
@@ -142,10 +151,8 @@ class LiconProfileConnector {
   }
 
   async handleConnectionModal() {
-    // Wait for modal to appear
     await this.sleep(1000);
 
-    // Look for the connection invitation modal using exact LinkedIn selectors from reference
     const modal = document.querySelector('[data-test-modal-id="send-invite-modal"]') ||
                   document.querySelector('.send-invite') ||
                   document.querySelector('.artdeco-modal-overlay--is-top-layer') ||
@@ -153,41 +160,76 @@ class LiconProfileConnector {
 
     if (!modal) {
       console.log('No connection modal found');
+      this.notifyFailure('noModal', 'Connection modal did not appear');
       return;
     }
 
-    console.log('Connection modal found, looking for send button...');
+    const modalText = modal.textContent || '';
 
-    // Look for "Send without a note" button using exact LinkedIn selectors from reference
+    // Check for email required
+    if (modalText.includes('How do you know') || modalText.includes('email address')) {
+      console.log('Email required to connect');
+      this.notifyFailure('emailRequired', 'LinkedIn requires email to connect');
+      const closeBtn = modal.querySelector('[data-test-modal-close-btn]') ||
+                       modal.querySelector('.artdeco-modal__dismiss');
+      if (closeBtn) closeBtn.click();
+      return;
+    }
+
+    // Check for weekly limit
+    if (modalText.includes('invitation limit') || modalText.includes('weekly limit')) {
+      console.log('Weekly invitation limit reached');
+      this.notifyFailure('weeklyLimit', 'Weekly invitation limit reached');
+      const closeBtn = modal.querySelector('[data-test-modal-close-btn]') ||
+                       modal.querySelector('.artdeco-modal__dismiss');
+      if (closeBtn) closeBtn.click();
+      return;
+    }
+
+    // Try multiple send button patterns
     const sendButton = modal.querySelector('button[aria-label*="Send without a note"]') ||
-                      [...modal.querySelectorAll('button.artdeco-button--primary')].find(btn => 
-                        btn.textContent.includes('Send without a note')
+                      modal.querySelector('button[aria-label*="Send now"]') ||
+                      [...modal.querySelectorAll('button.artdeco-button--primary')].find(btn =>
+                        btn.textContent.includes('Send')
                       );
 
     if (sendButton) {
-      console.log('Clicking "Send without a note"...');
+      console.log('Clicking send button...');
       sendButton.click();
       await this.sleep(1000);
-      console.log('✅ Connection invitation sent!');
-      
-      // Notify background script of success
+      console.log('Connection invitation sent!');
       this.notifySuccess();
     } else {
       console.log('Send button not found, closing modal...');
-      // Try to close modal using exact LinkedIn selectors from reference
+      this.notifyFailure('modalSendFailed', 'Could not find send button in modal');
       const closeButton = modal.querySelector('[data-test-modal-close-btn]') ||
-                          modal.querySelector('button[aria-label*="Dismiss"].artdeco-modal__dismiss');
-      if (closeButton) {
-        closeButton.click();
-      }
+                          modal.querySelector('.artdeco-modal__dismiss');
+      if (closeButton) closeButton.click();
     }
   }
 
   notifySuccess() {
-    // Send success message to background script
     chrome.runtime.sendMessage({
       type: 'PROFILE_PROCESSED',
       data: { successful: true }
+    });
+  }
+
+  notifyFailure(reason, details) {
+    chrome.runtime.sendMessage({
+      type: 'ADD_FAILED_PROFILE',
+      data: {
+        name: document.title.replace(' | LinkedIn', '').trim(),
+        profileUrl: window.location.href.split('?')[0],
+        reason,
+        details,
+        buttonText: 'Profile Visit',
+        degree: 'Unknown'
+      }
+    });
+    chrome.runtime.sendMessage({
+      type: 'PROFILE_PROCESSED',
+      data: { error: true }
     });
   }
 
