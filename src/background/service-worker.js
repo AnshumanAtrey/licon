@@ -1,4 +1,5 @@
 // LICON Background Service Worker
+importScripts('../engagement/llm-client.js');
 console.log('🔥 LICON: Background service worker starting...');
 
 class LiconBackground {
@@ -6,6 +7,7 @@ class LiconBackground {
     console.log('🔥 LICON: Initializing background service worker...');
     this.isRunning = false;
     this.currentCompany = null;
+    this.activeTabId = null;
     this.pageInfo = { currentPage: 1, totalPages: 1 };
     this.pagesProcessed = 0;
     this.stats = {
@@ -24,6 +26,7 @@ class LiconBackground {
       }
     };
     this.failedProfiles = [];
+    this.llmClient = new LiconLLMClient();
     this.setupListeners();
     console.log('✅ LICON: Background service worker initialized successfully');
   }
@@ -87,6 +90,7 @@ class LiconBackground {
           const status = {
             isRunning: this.isRunning,
             currentCompany: this.currentCompany,
+            activeTabId: this.activeTabId || null,
             stats: this.stats,
             pageInfo: this.pageInfo,
             pagesProcessed: this.pagesProcessed
@@ -123,6 +127,13 @@ class LiconBackground {
           console.log('💾 LICON: Saving settings:', message.data);
           await this.saveSettings(message.data);
           sendResponse({ success: true });
+          break;
+
+        case 'CHECK_ACTIVE_TAB':
+          // Content script asks: am I the tab that should be running automation?
+          const isActive = !this.activeTabId || sender.tab?.id === this.activeTabId;
+          console.log(`🔍 LICON: Tab ${sender.tab?.id} checking active status: ${isActive} (activeTab: ${this.activeTabId})`);
+          sendResponse({ isActiveTab: isActive });
           break;
 
         case 'CLOSE_TAB':
@@ -184,6 +195,126 @@ class LiconBackground {
           sendResponse({ failedProfiles: this.failedProfiles });
           break;
 
+        // --- Engagement message handlers ---
+
+        case 'SAVE_ENGAGEMENT_SETTINGS':
+          await chrome.storage.sync.set({ liconEngagementSettings: message.data });
+          sendResponse({ success: true });
+          break;
+
+        case 'GET_ENGAGEMENT_SETTINGS':
+          const engSettings = await chrome.storage.sync.get({ liconEngagementSettings: {
+            provider: 'openai', apiKey: '', model: 'gpt-4o-mini',
+            autoPost: false, commentCount: 15
+          }});
+          sendResponse(engSettings.liconEngagementSettings);
+          break;
+
+        case 'TEST_LLM_CONNECTION':
+          const testResult = await this.llmClient.testConnection(
+            message.data.provider, message.data.apiKey
+          );
+          sendResponse(testResult);
+          break;
+
+        case 'TRAIN_VOICE':
+          try {
+            const voiceTab = await chrome.tabs.create({
+              url: 'https://www.linkedin.com/in/me/recent-activity/comments/',
+              active: false
+            });
+            const onVoiceTabReady = (updatedTabId, changeInfo) => {
+              if (updatedTabId === voiceTab.id && changeInfo.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(onVoiceTabReady);
+                chrome.scripting.executeScript({
+                  target: { tabId: voiceTab.id },
+                  files: ['src/engagement/voice-trainer.js']
+                }).catch(err => {
+                  console.error('LICON: Failed to inject voice trainer:', err);
+                  chrome.tabs.remove(voiceTab.id).catch(() => {});
+                });
+              }
+            };
+            chrome.tabs.onUpdated.addListener(onVoiceTabReady);
+            setTimeout(() => {
+              chrome.tabs.onUpdated.removeListener(onVoiceTabReady);
+              chrome.tabs.remove(voiceTab.id).catch(() => {});
+            }, 60000);
+            sendResponse({ success: true });
+          } catch (err) {
+            sendResponse({ error: err.message });
+          }
+          break;
+
+        case 'VOICE_TRAINING_COMPLETE':
+          if (message.data?.success && message.data.voiceProfile) {
+            await chrome.storage.local.set({
+              liconEngagement: { voiceProfile: message.data.voiceProfile }
+            });
+            console.log('LICON: Voice training complete -', message.data.voiceProfile.commentCount, 'comments');
+          } else {
+            console.error('LICON: Voice training failed:', message.data?.error);
+          }
+          sendResponse({ success: true });
+          break;
+
+        case 'GET_VOICE_STATUS':
+          const engData = await chrome.storage.local.get({ liconEngagement: {} });
+          sendResponse({ voiceProfile: engData.liconEngagement?.voiceProfile || null });
+          break;
+
+        case 'GENERATE_REPLY':
+          try {
+            const engCfg = await chrome.storage.sync.get({ liconEngagementSettings: {} });
+            const cfg = engCfg.liconEngagementSettings;
+            if (!cfg.apiKey) {
+              sendResponse({ error: 'No API key configured. Open Engage tab to set up.' });
+              break;
+            }
+            const voiceData = await chrome.storage.local.get({ liconEngagement: {} });
+            const voiceProfile = voiceData.liconEngagement?.voiceProfile || null;
+            const systemPrompt = this.llmClient.buildStyleSystemPrompt(voiceProfile);
+            const userPrompt = this.llmClient.buildReplyUserPrompt(
+              message.data.postText, message.data.postAuthor
+            );
+            const rawReply = await this.llmClient.generate(
+              cfg.provider, cfg.apiKey, systemPrompt, userPrompt, cfg.model
+            );
+            const reply = this.llmClient.cleanReply(rawReply);
+            sendResponse({ reply });
+          } catch (err) {
+            console.error('LICON: Generate reply error:', err);
+            sendResponse({ error: err.message });
+          }
+          break;
+
+        case 'ENGAGEMENT_ACTIVITY':
+          try {
+            const logData = await chrome.storage.local.get({ liconEngagementLog: [] });
+            const log = logData.liconEngagementLog || [];
+            log.push({
+              id: `eng_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              ...message.data
+            });
+            // Cap at 100 entries
+            while (log.length > 100) log.shift();
+            await chrome.storage.local.set({ liconEngagementLog: log });
+            sendResponse({ success: true });
+          } catch (err) {
+            sendResponse({ error: err.message });
+          }
+          break;
+
+        case 'GET_ENGAGEMENT_LOG':
+          const logResult = await chrome.storage.local.get({ liconEngagementLog: [] });
+          sendResponse({ log: logResult.liconEngagementLog || [] });
+          break;
+
+        case 'CLEAR_ENGAGEMENT_LOG':
+          await chrome.storage.local.set({ liconEngagementLog: [] });
+          sendResponse({ success: true });
+          break;
+
         default:
           console.log('❓ LICON: Unknown message type:', message.type);
           sendResponse({ error: 'Unknown message type: ' + message.type });
@@ -202,6 +333,7 @@ class LiconBackground {
     console.log('🚀 LICON: Starting automation for:', data.companyUrl);
     this.isRunning = true;
     this.currentCompany = data.companyUrl;
+    this.activeTabId = data.tabId || null; // Track which tab is being automated
     this.pageInfo = { currentPage: 1, totalPages: 1 };
     this.pagesProcessed = 0;
 
@@ -234,15 +366,22 @@ class LiconBackground {
       }
     });
 
-    console.log('📡 LICON: Broadcasting automation start message...');
-    // Notify all LinkedIn tabs
-    await this.broadcastToLinkedInTabs({ type: 'AUTOMATION_STARTED' });
+    // Only start automation on the specific tab the user is viewing
+    if (this.activeTabId) {
+      console.log(`📡 LICON: Starting automation on tab ${this.activeTabId} only`);
+      await this.sendToTab(this.activeTabId, { type: 'AUTOMATION_STARTED' });
+    } else {
+      // Fallback: broadcast to all (shouldn't happen with updated side panel)
+      console.log('📡 LICON: No specific tab — broadcasting to all LinkedIn tabs...');
+      await this.broadcastToLinkedInTabs({ type: 'AUTOMATION_STARTED' });
+    }
     console.log('✅ LICON: Automation started successfully');
   }
 
   async stopAutomation() {
     this.isRunning = false;
     this.currentCompany = null;
+    this.activeTabId = null;
 
     await chrome.storage.local.set({
       liconState: {
@@ -252,7 +391,7 @@ class LiconBackground {
       }
     });
 
-    // Notify all LinkedIn tabs
+    // Notify all LinkedIn tabs to stop
     this.broadcastToLinkedInTabs({ type: 'AUTOMATION_STOPPED' });
   }
 
@@ -331,21 +470,43 @@ class LiconBackground {
       };
       chrome.tabs.onUpdated.addListener(onTabUpdated);
 
-      // Safety timeout - clean up listener if tab never loads
+      // Safety timeout - clean up listener and close orphaned tab if it never loads
       setTimeout(() => {
         chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        chrome.tabs.remove(newTab.id).catch(() => {});
       }, 30000);
     }
   }
 
   async handleTabUpdate(tabId, tab) {
+    // Inject feed injector on LinkedIn feed pages (regardless of automation state)
+    const isFeedPage = tab.url?.match(/linkedin\.com\/feed/);
+    if (isFeedPage) {
+      try {
+        const engCfg = await chrome.storage.sync.get({ liconEngagementSettings: {} });
+        if (engCfg.liconEngagementSettings?.apiKey) {
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            files: ['src/engagement/feed-injector.js']
+          });
+        }
+      } catch (error) {
+        // Script might already be injected
+      }
+    }
+
     if (!this.isRunning) return;
+
+    // Only auto-inject into the tab that's being automated (not all LinkedIn tabs)
+    if (this.activeTabId && tabId !== this.activeTabId) return;
 
     // Check if this is a supported LinkedIn page (company people or search results)
     const isCompanyPage = tab.url?.match(/linkedin\.com\/company\/[^\/]+\/people/);
     const isSearchPage = tab.url?.match(/linkedin\.com\/search\/results\/people/);
 
     if (isCompanyPage || isSearchPage) {
+      // Update activeTabId in case of search pagination (same tab, new URL)
+      this.activeTabId = tabId;
       // Inject our content script if not already present
       try {
         await chrome.scripting.executeScript({
@@ -426,6 +587,39 @@ class LiconBackground {
       } catch (error) {
         console.error(`❌ LICON: Error processing tab ${tab.id}:`, error.message);
       }
+    }
+  }
+
+  async sendToTab(tabId, message) {
+    try {
+      // Check if content script is loaded
+      try {
+        await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+      } catch (e) {
+        // Not loaded — inject it
+        console.log(`📤 LICON: Injecting content script into tab ${tabId}...`);
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['src/content/main-automator.js']
+        });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // Send the message with retries
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          const response = await chrome.tabs.sendMessage(tabId, message);
+          console.log(`✅ LICON: Message "${message.type}" sent to tab ${tabId}`, response);
+          return;
+        } catch (error) {
+          retries--;
+          if (retries > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      console.error(`❌ LICON: Failed to send "${message.type}" to tab ${tabId} after all retries`);
+    } catch (error) {
+      console.error(`❌ LICON: Error sending to tab ${tabId}:`, error.message);
     }
   }
 

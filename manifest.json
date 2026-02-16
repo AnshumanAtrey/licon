@@ -30,7 +30,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["src/content/profile-connector.js"],
+      "resources": [
+        "src/content/profile-connector.js",
+        "src/engagement/feed-injector.js",
+        "src/engagement/voice-trainer.js"
+      ],
       "matches": ["*://www.linkedin.com/*"]
     }
   ],

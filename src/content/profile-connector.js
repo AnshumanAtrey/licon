@@ -11,6 +11,7 @@ class LiconProfileConnector {
     // Check if this is a LinkedIn profile page
     if (!this.isProfilePage()) {
       console.log('Not a LinkedIn profile page, closing tab...');
+      this.notifyFailure('notProfilePage', 'Tab URL did not match a LinkedIn profile page: ' + window.location.href);
       this.closeTab();
       return;
     }
@@ -23,16 +24,16 @@ class LiconProfileConnector {
   }
 
   isProfilePage() {
-    return window.location.href.match(/linkedin\.com\/in\/[^\/]+\/?$/);
+    return window.location.href.match(/linkedin\.com\/in\/[^\/]+\/?(\?|$)/);
   }
 
   async waitForPageLoad() {
     return new Promise((resolve) => {
       if (document.readyState === 'complete') {
-        setTimeout(resolve, 2000); // Extra wait for dynamic content
+        setTimeout(resolve, 3000); // Extra wait for dynamic content (background tabs load slower)
       } else {
         window.addEventListener('load', () => {
-          setTimeout(resolve, 2000);
+          setTimeout(resolve, 3000);
         });
       }
     });
@@ -56,16 +57,27 @@ class LiconProfileConnector {
         return;
       }
 
-      // Click More button
+      // Click More button and wait for dropdown animation
       console.log('Clicking More button...');
       moreButton.click();
-      await this.sleep(1000);
+      await this.sleep(1500);
 
       // Look for Connect option in dropdown using exact LinkedIn selectors
       const connectOption = this.findConnectInDropdown();
       if (!connectOption) {
-        console.log('No Connect option in dropdown');
-        this.notifyFailure('noConnectInDropdown', 'No Connect option in dropdown menu');
+        // Check if already following (explains missing Connect option)
+        const dropdownItems = document.querySelectorAll('.artdeco-dropdown__item');
+        const hasUnfollow = [...dropdownItems].some(i => i.textContent.includes('Unfollow') && i.offsetParent !== null);
+        if (hasUnfollow) {
+          console.log('Already following this profile — Connect not available in dropdown');
+          this.notifyFailure('alreadyFollowing', 'Already following — Connect option not available');
+        } else {
+          console.log('No Connect option in dropdown');
+          this.notifyFailure('noConnectInDropdown', 'No Connect option in dropdown menu');
+        }
+        // Close dropdown before leaving
+        const closeBtn = document.querySelector('.artdeco-dropdown__trigger--is-open');
+        if (closeBtn) closeBtn.click();
         return;
       }
 
@@ -84,21 +96,33 @@ class LiconProfileConnector {
   }
 
   findDirectConnectButton() {
-    // IMPORTANT: Scope search to main profile area only
-    // The sidebar ("More profiles for you") has Connect buttons for OTHER people
+    // IMPORTANT: We must verify any Connect button is for the PROFILE OWNER,
+    // not sidebar "People also viewed" recommendations (which are inside scaffold-layout__main)
     const mainArea = document.querySelector('.scaffold-layout__main') || document;
+    const profileFirstName = document.querySelector('h1')?.textContent?.trim()?.split(' ')[0];
 
-    // First: look for any button with "Invite ... connect" aria-label (most reliable)
-    const ariaConnect = mainArea.querySelector('button[aria-label*="Invite"][aria-label*="connect"]');
-    if (ariaConnect && ariaConnect.offsetParent !== null) {
-      return ariaConnect;
+    // First: look for button with "Invite [name] connect" aria-label matching the profile owner
+    const allInviteButtons = mainArea.querySelectorAll('button[aria-label*="Invite"][aria-label*="connect"]');
+    for (const btn of allInviteButtons) {
+      if (btn.offsetParent === null) continue; // not visible
+      const label = btn.getAttribute('aria-label') || '';
+      // If we know the profile name, only accept buttons for this person
+      if (profileFirstName && !label.includes(profileFirstName)) {
+        console.log('Skipping sidebar Connect button:', label);
+        continue;
+      }
+      return btn;
     }
 
-    // Fallback: any visible button whose text is exactly "Connect" in main area
-    const allButtons = mainArea.querySelectorAll('button.artdeco-button');
-    for (const btn of allButtons) {
-      if (btn.textContent.trim() === 'Connect' && btn.offsetParent !== null) {
-        return btn;
+    // Fallback: look for Connect button in the profile's top card only (not sidebar)
+    const h1 = document.querySelector('h1');
+    const topCard = h1?.closest('.artdeco-card') || h1?.closest('section');
+    if (topCard) {
+      const cardButtons = topCard.querySelectorAll('button.artdeco-button');
+      for (const btn of cardButtons) {
+        if (btn.textContent.trim() === 'Connect' && btn.offsetParent !== null) {
+          return btn;
+        }
       }
     }
 
@@ -106,19 +130,32 @@ class LiconProfileConnector {
   }
 
   findMoreButton() {
-    // Scope to main profile area to avoid sidebar elements
-    const mainArea = document.querySelector('.scaffold-layout__main') || document;
+    // Scope to the profile's top card to avoid sidebar elements
+    const h1 = document.querySelector('h1');
+    const topCard = h1?.closest('.artdeco-card') || h1?.closest('section');
+    // Also check sticky header actions (visible when scrolled down)
+    const stickyActions = document.querySelector('.pvs-sticky-header-profile-actions');
+    const fallback = document.querySelector('.scaffold-layout__main') || document;
 
-    const moreButtons = [
-      ...mainArea.querySelectorAll('button[aria-label*="More actions"]'),
-      ...mainArea.querySelectorAll('button.artdeco-button--secondary')
+    const candidates = [
+      ...(topCard ? topCard.querySelectorAll('button[aria-label*="More actions"]') : []),
+      ...(stickyActions ? stickyActions.querySelectorAll('button[aria-label*="More actions"]') : []),
+      ...fallback.querySelectorAll('button[aria-label*="More actions"]')
     ].filter(btn =>
       (btn.textContent.trim() === 'More' ||
        btn.querySelector('svg[data-test-icon*="overflow"]')) &&
       btn.offsetParent !== null // visible
     );
 
-    return moreButtons[0] || null;
+    // Deduplicate (same button may appear from multiple queries)
+    const seen = new Set();
+    const unique = candidates.filter(btn => {
+      if (seen.has(btn)) return false;
+      seen.add(btn);
+      return true;
+    });
+
+    return unique[0] || null;
   }
 
   findConnectInDropdown() {

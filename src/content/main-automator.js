@@ -11,9 +11,10 @@ if (window.__liconLoaded) {
     console.log('🔄 LICON: URL changed (SPA navigation), re-initializing on new page...');
     window.__liconLastUrl = window.location.href;
     if (window.liconAutomator) {
-      window.liconAutomator.pageType = null;
       window.liconAutomator.processed.clear();
       window.liconAutomator.isRunning = false;
+      // Re-detect pageType synchronously before async init() to prevent race condition
+      window.liconAutomator.pageType = window.liconAutomator.detectPageType();
       window.liconAutomator.init();
     }
     return;
@@ -36,7 +37,12 @@ class LiconMainAutomator {
     this.pagesProcessed = 0;
     this.totalProfilesProcessed = 0;
     this.settings = {};
-    this.pageType = null; // 'company' | 'search' | 'unknown'
+
+    // Detect page type SYNCHRONOUSLY in constructor (before message listener)
+    // This prevents the race condition where AUTOMATION_STARTED arrives
+    // before async init() sets pageType, causing wrong code path
+    this.pageType = this.detectPageType();
+    console.log('🔧 LICON: Page type detected:', this.pageType);
 
     console.log('🔧 LICON: Setting up message listener...');
     this.setupMessageListener();
@@ -82,6 +88,13 @@ class LiconMainAutomator {
       console.log('🔍 LICON: Background status:', status);
 
       if (status && status.isRunning) {
+        // Check if this tab is the active automation tab
+        const activeCheck = await this.sendMessage({ type: 'CHECK_ACTIVE_TAB' });
+        if (activeCheck && !activeCheck.isActiveTab) {
+          console.log('⏭️ LICON: This tab is not the active automation tab, skipping');
+          return;
+        }
+
         console.log('🔄 LICON: Automation is running in background - continuing on this page...');
 
         // Restore counters from background state
@@ -134,9 +147,13 @@ class LiconMainAutomator {
             sendResponse({ success: true, message: 'Already running' });
             break;
           }
-          // Reset counters for new session
-          this.pagesProcessed = 0;
-          this.totalProfilesProcessed = 0;
+          // Restore counters from background's global state (not reset to 0)
+          // This ensures the profile limit is checked against the true global count
+          {
+            const status = await this.sendMessage({ type: 'GET_STATUS' });
+            this.totalProfilesProcessed = status?.stats?.totalProcessed || 0;
+            this.pagesProcessed = status?.pagesProcessed || 0;
+          }
           this.processed.clear();
           // Refresh settings in case user changed them
           this.settings = await this.sendMessage({ type: 'GET_SETTINGS' }) || this.settings;
@@ -210,24 +227,24 @@ class LiconMainAutomator {
       }
     }
 
-    // Detect total members using exact class (company page)
+    // Detect total members (company page) - use text matching since LinkedIn obfuscates class names
     if (this.pageType === 'company') {
-      const memberCountElement = document.querySelector('.ESvxpuvWpGBXimYKniUQkfejUaVVbshwSSY');
-      if (memberCountElement) {
-        const match = memberCountElement.textContent.match(/(\d+) associated members/);
+      const headerEl = document.querySelector('.org-people__header-spacing-carousel, [class*="org-people__header"]');
+      if (headerEl) {
+        const match = headerEl.textContent.match(/([\d,]+)\s*associated members/);
         if (match) {
-          this.totalMembers = parseInt(match[1]);
+          this.totalMembers = parseInt(match[1].replace(/,/g, ''));
         }
       }
     }
 
-    // For search, detect results count
+    // For search, detect results count from pagination
     if (this.pageType === 'search') {
-      const resultsCount = document.querySelector('.search-results-container h2');
-      if (resultsCount) {
-        const match = resultsCount.textContent.match(/(\d+[\d,]*)/);
+      const pagText = document.querySelector('.artdeco-pagination__state--a11y');
+      if (pagText) {
+        const match = pagText.textContent.match(/Page \d+ of (\d+)/);
         if (match) {
-          this.totalMembers = parseInt(match[1].replace(/,/g, ''));
+          this.totalMembers = parseInt(match[1]) * 10; // ~10 results per page
         }
       }
     }
@@ -241,6 +258,21 @@ class LiconMainAutomator {
     this.isRunning = true;
     // Clear processed set for fresh page
     this.processed.clear();
+
+    // Ensure pageType is detected (fixes race condition: AUTOMATION_STARTED can
+    // arrive before init() finishes, leaving pageType as null)
+    if (!this.pageType) {
+      this.pageType = this.detectPageType();
+      console.log('🔧 LICON: Late pageType detection:', this.pageType);
+    }
+
+    // Abort if page is not supported
+    if (this.pageType === 'unknown' || !this.pageType) {
+      console.log('⚠️ LICON: Not on a supported page, stopping');
+      this.stopAutomation();
+      return;
+    }
+
     // Re-detect page info (pagination may have loaded since init)
     this.detectPageInfo();
 
@@ -253,7 +285,7 @@ class LiconMainAutomator {
     }
 
     console.log('🔥 LICON: Starting automation...');
-    console.log(`📊 LICON: Page ${this.currentPage}/${this.totalPages}`);
+    console.log(`📊 LICON: Page type: ${this.pageType}, Page ${this.currentPage}/${this.totalPages}`);
 
     // Report page info to background for side panel display
     this.sendMessage({
@@ -274,9 +306,11 @@ class LiconMainAutomator {
       if (this.pageType === 'company') {
         // Company pages: process visible profiles first, then load more (batch approach)
         await this.processCompanyPageInBatches();
-      } else {
-        // Search pages: all results are visible on page, just scroll to load lazy content
-        await this.scrollAndLoadAll();
+      } else if (this.pageType === 'search') {
+        // Search pages: scroll to load lazy content if autoScroll is enabled
+        if (this.settings.autoScroll !== false) {
+          await this.scrollAndLoadAll();
+        }
 
         // Re-detect page info after scroll (pagination may have updated)
         this.detectPageInfo();
@@ -369,6 +403,11 @@ class LiconMainAutomator {
   }
 
   async loadMoreCompanyProfiles() {
+    // Respect autoScroll setting
+    if (this.settings.autoScroll === false) {
+      return false;
+    }
+
     // Try clicking "Show more results" button
     const showMoreBtn = document.querySelector('.scaffold-finite-scroll__load-button');
 
@@ -406,12 +445,16 @@ class LiconMainAutomator {
   }
 
   async scrollAndLoadAll() {
-    console.log('📜 LICON: Loading all profiles...');
-    
+    console.log('📜 LICON: Loading all search results on this page...');
+
     let lastHeight = 0;
     let stableCount = 0;
-    
-    while (this.isRunning && stableCount < 3) {
+
+    // Safety: search pages typically have 10 results per page, no need for excessive scrolling
+    let maxScrollAttempts = 10;
+
+    while (this.isRunning && stableCount < 3 && maxScrollAttempts > 0) {
+      maxScrollAttempts--;
       // Scroll to bottom
       window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
       
@@ -500,6 +543,10 @@ class LiconMainAutomator {
   }
 
   collectProfiles() {
+    // Re-detect if pageType was not set (race condition safety)
+    if (!this.pageType) {
+      this.pageType = this.detectPageType();
+    }
     console.log('🔍 LICON: Collecting profiles from page (type:', this.pageType, ')...');
 
     if (this.pageType === 'company') {
@@ -731,8 +778,11 @@ class LiconMainAutomator {
         // Message button: check degree to determine if actually connected
         // On company pages, 2nd/3rd degree profiles often show Message (InMail/Open Profile)
         const isFirstDegree = profile.degree && profile.degree.includes('1st');
-        if (isFirstDegree) {
+        if (isFirstDegree && this.settings.skipConnected !== false) {
           console.log(`💬 LICON: Skipping ${profile.name} - Message + 1st degree = already connected`);
+          this.updateStats({ skipped: true, skipReason: 'alreadyConnected' });
+        } else if (isFirstDegree) {
+          console.log(`💬 LICON: ${profile.name} is already connected but skipConnected is off - skipping anyway (can't re-connect)`);
           this.updateStats({ skipped: true, skipReason: 'alreadyConnected' });
         } else {
           console.log(`💬 LICON: ${profile.name} has Message button but is ${profile.degree} - opening profile for More → Connect`);
@@ -751,9 +801,44 @@ class LiconMainAutomator {
         console.log(`✅ LICON: Skipping ${profile.name} - Already following`);
         this.updateStats({ skipped: true, skipReason: 'alreadyConnected' });
 
-      } else if (btn === 'unknown' && !profile.buttonElement) {
-        console.log(`⚠️ LICON: Skipping ${profile.name} - No action button found`);
-        this.updateStats({ skipped: true, skipReason: 'noConnectButton' });
+      } else if (btn === 'unknown' || !profile.buttonElement) {
+        // Button wasn't found at collection time — LinkedIn lazy-loads buttons.
+        // Re-check the card now (we scrolled it into view and waited).
+        const freshBtn = profile.element.querySelector('button[aria-label*="Invite"]') ||
+                         profile.element.querySelector('button[aria-label*="Message"]') ||
+                         profile.element.querySelector('button[aria-label*="Follow"]') ||
+                         profile.element.querySelector('button[aria-label*="Connect"]') ||
+                         profile.element.querySelector('button');
+
+        if (freshBtn) {
+          const freshLabel = (freshBtn.getAttribute('aria-label') || '').toLowerCase();
+          const freshText = freshBtn.textContent.trim().toLowerCase();
+
+          if (freshLabel.includes('invite') && freshLabel.includes('connect')) {
+            console.log(`🔗 LICON: Re-detected Connect button for ${profile.name} (lazy-loaded)`);
+            profile.buttonElement = freshBtn;
+            await this.handleDirectConnect(profile);
+          } else if (freshText.includes('follow') && !freshText.includes('following')) {
+            console.log(`👥 LICON: Re-detected Follow button for ${profile.name} (lazy-loaded) - opening profile`);
+            await this.handleFollowProfile(profile);
+          } else if (freshText.includes('message')) {
+            const isFirstDegree = profile.degree && profile.degree.includes('1st');
+            if (isFirstDegree) {
+              console.log(`💬 LICON: Re-detected Message+1st for ${profile.name} - already connected`);
+              this.updateStats({ skipped: true, skipReason: 'alreadyConnected' });
+            } else {
+              console.log(`💬 LICON: Re-detected Message for ${profile.name} (${profile.degree}) - opening profile`);
+              await this.handleFollowProfile(profile);
+            }
+          } else {
+            console.log(`🔗 LICON: Re-detected button "${freshText}" for ${profile.name} - opening profile to connect`);
+            await this.handleFollowProfile(profile);
+          }
+        } else {
+          // Still no button after re-check — open profile in new tab as last resort
+          console.log(`🔗 LICON: No button for ${profile.name} even after re-check — opening profile to connect`);
+          await this.handleFollowProfile(profile);
+        }
 
       } else {
         console.log(`❓ LICON: Unknown button type for ${profile.name}: "${profile.buttonText}" - attempting to click anyway`);
@@ -1081,30 +1166,9 @@ function initializeLicon() {
   }
 }
 
-// Test message listener immediately
-console.log('🧪 LICON: Setting up test message listener...');
-if (typeof chrome !== 'undefined' && chrome.runtime) {
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('🧪 LICON: TEST - Received message in content script:', message);
-    console.log('🧪 LICON: TEST - Message type:', message.type);
-    console.log('🧪 LICON: TEST - Sender:', sender);
-    
-    if (message.type === 'PING') {
-      console.log('🧪 LICON: TEST - PING received, responding');
-      sendResponse({ testListener: true, timestamp: Date.now() });
-      return true;
-    }
-    
-    if (message.type === 'AUTOMATION_STARTED') {
-      console.log('🧪 LICON: TEST - AUTOMATION_STARTED message received!');
-    }
-    
-    sendResponse({ received: true, timestamp: Date.now() });
-    return true;
-  });
-  console.log('✅ LICON: Test message listener set up');
-} else {
-  console.error('❌ LICON: Cannot set up test message listener - Chrome runtime not available');
+// Verify Chrome extension context is available
+if (typeof chrome === 'undefined' || !chrome.runtime) {
+  console.error('❌ LICON: Chrome extension context not available');
 }
 
 // Initialize based on document state

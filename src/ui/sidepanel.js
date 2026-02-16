@@ -238,7 +238,8 @@ class LiconSidePanel {
       await this.sendMessage({
         type: 'START_AUTOMATION',
         data: {
-          companyUrl: this.currentTab.url
+          companyUrl: this.currentTab.url,
+          tabId: this.currentTab.id
         }
       });
       
@@ -490,9 +491,11 @@ class LiconSidePanel {
   startStatusPolling() {
     // Poll status every 2 seconds when side panel is open
     this.statusInterval = setInterval(async () => {
+      const wasRunning = this.isRunning;
       await this.loadStatus();
-      // Also refresh failed profiles during automation
-      if (this.isRunning) {
+      // Refresh failed profiles during automation AND once after it stops
+      // (background tabs may finish after automation ends)
+      if (this.isRunning || wasRunning) {
         await this.loadFailedProfiles();
       }
     }, 2000);
@@ -653,5 +656,5 @@ class LiconSidePanel {
 
 // Initialize side panel when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  new LiconSidePanel();
+  window.liconPanel = new LiconSidePanel();
 });

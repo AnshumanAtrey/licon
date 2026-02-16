@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>LICON Test Harness</title>
+  <style>
+    :root {
+      --bg: #f0eeeb;
+      --surface: #ffffff;
+      --text: #1a1a1a;
+      --text-secondary: #6b6b6b;
+      --text-dim: #a0a0a0;
+      --accent: #1a1a1a;
+      --border: #e2e0dc;
+      --radius: 10px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .test-layout {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* === Left: Side Panel Mirror === */
+    .panel-frame {
+      width: 380px;
+      min-width: 380px;
+      height: 100vh;
+      overflow-y: auto;
+      border-right: 2px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+    .card:last-child { margin-bottom: 0; }
+    .card-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--text-dim); margin-bottom: 20px;
+    }
+    .status-bar { display: flex; align-items: center; gap: 10px; }
+    .status-bar .logo { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+    .status-dot.active { background: #34a853; box-shadow: 0 0 0 3px rgba(52, 168, 83, 0.15); }
+    .status-text { font-size: 14px; font-weight: 600; color: var(--text); }
+    .pulse { animation: pulse-glow 2s infinite; }
+    @keyframes pulse-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .btn-reset {
+      margin-left: auto; background: var(--bg); border: none; color: var(--text-dim);
+      font-size: 15px; width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: all 0.15s ease;
+    }
+    .btn-reset:hover { color: var(--text); background: var(--border); }
+    .stats-row { display: flex; gap: 8px; margin-top: 20px; }
+    .stat { flex: 1; background: var(--bg); border-radius: 8px; padding: 14px 8px; text-align: center; }
+    .stat-val { font-size: 22px; font-weight: 700; color: var(--text); display: block; line-height: 1; margin-bottom: 6px; }
+    .stat-key { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); font-weight: 600; }
+    .skip-breakdown { margin-top: 12px; font-size: 11px; color: var(--text-dim); line-height: 1.8; }
+    .skip-breakdown span { color: var(--text-secondary); font-weight: 600; }
+    .company-info { display: none; margin-top: 16px; padding: 12px; font-size: 12px; color: var(--text-secondary); background: var(--bg); border-radius: 8px; }
+    .company-info strong { color: var(--text); font-weight: 600; }
+    .controls { display: flex; gap: 10px; }
+    .btn { flex: 1; padding: 14px; border: none; border-radius: var(--radius); font-weight: 700; font-size: 13px; letter-spacing: 0.3px; cursor: pointer; transition: all 0.15s ease; }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .btn-start { background: var(--accent); color: #fff; }
+    .btn-start:hover:not(:disabled) { background: #333; }
+    .btn-stop { background: var(--bg); color: var(--text-secondary); border: 1.5px solid var(--border); }
+    .btn-stop:hover:not(:disabled) { border-color: var(--text-dim); color: var(--text); }
+    .page-info { text-align: center; font-size: 12px; color: var(--text-dim); margin-top: 12px; }
+    .page-info span { color: var(--text); font-weight: 700; }
+    .setting-group { margin-bottom: 20px; }
+    .setting-group:last-child { margin-bottom: 0; }
+    .setting-group-label { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 14px; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0eeeb; }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-row label { font-size: 13px; color: var(--text-secondary); }
+    .setting-input { background: var(--bg); border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); width: 76px; text-align: center; font-size: 13px; font-weight: 600; transition: border-color 0.15s; }
+    .setting-input:focus { outline: none; border-color: var(--text); }
+    .setting-hint { font-size: 11px; color: var(--text-dim); margin-top: 6px; margin-bottom: 4px; }
+    .toggle { position: relative; width: 40px; height: 24px; background: var(--border); border-radius: 12px; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+    .toggle.active { background: var(--accent); }
+    .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; background: #fff; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+    .toggle.active::after { transform: translateX(16px); }
+    .failed-header { display: flex; justify-content: space-between; align-items: center; }
+    .failed-count { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+    .failed-count strong { color: var(--text); }
+    .failed-actions { display: flex; gap: 6px; }
+    .failed-actions button { background: var(--bg); border: none; color: var(--text-secondary); padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .failed-actions button:hover { background: var(--border); color: var(--text); }
+    .failed-list { max-height: 180px; overflow-y: auto; margin-top: 12px; }
+    .failed-item { padding: 10px 0; border-bottom: 1px solid var(--bg); font-size: 12px; }
+    .failed-item:last-child { border-bottom: none; }
+    .failed-item a { color: var(--text); text-decoration: none; font-weight: 500; }
+    .failed-item a:hover { text-decoration: underline; }
+    .failed-item .reason { font-size: 10px; color: var(--text-dim); margin-left: 6px; }
+    .failed-item .meta { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+    .failed-empty { font-size: 12px; color: var(--text-dim); margin-top: 12px; }
+    .footer { padding: 16px 20px; text-align: center; font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+    .footer a { color: var(--text-secondary); text-decoration: none; font-weight: 600; }
+    .footer a:hover { color: var(--text); }
+    .intro { display: flex; flex-direction: column; gap: 12px; }
+    .intro-hero { text-align: center; padding: 28px 20px 20px; }
+    .intro-hero .logo { width: 48px; height: 48px; border-radius: 12px; margin-bottom: 16px; }
+    .intro-hero h2 { font-size: 20px; font-weight: 800; color: var(--text); margin-bottom: 6px; letter-spacing: -0.3px; }
+    .intro-hero p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+    .intro-steps { display: flex; flex-direction: column; gap: 0; }
+    .intro-step { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--bg); }
+    .intro-step:last-child { border-bottom: none; }
+    .step-num { width: 28px; height: 28px; background: var(--bg); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: var(--text); flex-shrink: 0; }
+    .step-content h3 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+    .step-content p { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+    .intro-examples { font-size: 11px; color: var(--text-dim); line-height: 1.7; }
+    .intro-examples strong { color: var(--text-secondary); font-weight: 600; }
+    .intro-examples code { font-family: 'SF Mono', Monaco, monospace; font-size: 10px; background: var(--bg); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); }
+    .intro-btn { background: var(--accent); color: #fff; border: none; padding: 14px; border-radius: var(--radius); font-weight: 700; font-size: 13px; cursor: pointer; transition: background 0.15s; width: 100%; }
+    .intro-btn:hover { background: #333; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* === Right: Test Console === */
+    .test-console {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 12px;
+    }
+
+    .console-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .console-header h2 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .console-badge {
+      background: #2d5a27;
+      color: #7ce668;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .console-tabs {
+      display: flex;
+      gap: 0;
+      padding: 0 20px;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+    }
+
+    .console-tab {
+      padding: 10px 16px;
+      cursor: pointer;
+      color: #888;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .console-tab.active {
+      color: #fff;
+      border-bottom-color: #7ce668;
+    }
+
+    .console-tab:hover { color: #ccc; }
+
+    .console-panel {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+
+    .console-panel.active {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .api-section {
+      margin-bottom: 16px;
+    }
+
+    .api-section-title {
+      font-size: 11px;
+      color: #7ce668;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .api-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: #252525;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      cursor: pointer;
+      margin-bottom: 6px;
+      transition: all 0.15s;
+    }
+
+    .api-btn:hover {
+      background: #2a2a2a;
+      border-color: #555;
+    }
+
+    .api-btn .fn { color: #7ce668; }
+    .api-btn .desc { color: #888; font-size: 11px; margin-left: 8px; }
+
+    .console-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+    }
+
+    .log-entry {
+      padding: 6px 0;
+      border-bottom: 1px solid #222;
+      line-height: 1.5;
+      word-break: break-all;
+    }
+
+    .log-entry .timestamp { color: #555; }
+    .log-entry .level-info { color: #7ce668; }
+    .log-entry .level-error { color: #e66868; }
+    .log-entry .level-warn { color: #e6c668; }
+    .log-entry .msg { color: #e0e0e0; }
+    .log-entry .data { color: #68a8e6; }
+
+    .console-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid #333;
+      flex-shrink: 0;
+    }
+
+    .console-input {
+      flex: 1;
+      background: #252525;
+      border: 1px solid #333;
+      color: #e0e0e0;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      outline: none;
+    }
+
+    .console-input:focus { border-color: #7ce668; }
+
+    .console-run-btn {
+      background: #2d5a27;
+      color: #7ce668;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .console-run-btn:hover { background: #3a7a30; }
+  </style>
+</head>
+<body>
+  <div class="test-layout">
+
+    <!-- Left: Side Panel UI (mirrors sidepanel.html exactly) -->
+    <div class="panel-frame">
+      <div class="content" id="mainContent">
+        <div id="notLinkedInSection" class="intro" style="display: none;">
+          <div class="card intro-hero">
+            <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
+            <h2>LICON</h2>
+            <p>Automate LinkedIn connection requests from any company page or search results.</p>
+          </div>
+          <div class="card">
+            <div class="card-label">How it works</div>
+            <div class="intro-steps">
+              <div class="intro-step">
+                <div class="step-num">1</div>
+                <div class="step-content"><h3>Open a LinkedIn page</h3><p>Go to a company's People tab or use LinkedIn search with filters.</p></div>
+              </div>
+              <div class="intro-step">
+                <div class="step-num">2</div>
+                <div class="step-content"><h3>Configure settings</h3><p>Set profile limits, delay range, and behavior options.</p></div>
+              </div>
+              <div class="intro-step">
+                <div class="step-num">3</div>
+                <div class="step-content"><h3>Hit Start</h3><p>LICON scrolls through profiles and sends connection requests automatically.</p></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-label">Supported pages</div>
+            <div class="intro-examples">
+              <strong>Company people</strong><br>
+              <code>linkedin.com/company/google/people</code>
+              <br><br>
+              <strong>Search results</strong><br>
+              <code>linkedin.com/search/results/people?...</code>
+            </div>
+          </div>
+          <div class="card">
+            <button class="intro-btn" id="openLinkedInBtn">Open LinkedIn</button>
+          </div>
+        </div>
+
+        <div id="appSection">
+          <div class="card">
+            <div class="status-bar">
+              <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
+              <div class="status-dot" id="statusDot"></div>
+              <span class="status-text" id="statusText">Ready</span>
+              <button class="btn-reset" id="resetBtn" title="Reset stats">&#8634;</button>
+            </div>
+            <div id="companyInfo" class="company-info">
+              <strong id="companyName"></strong>
+              <span id="companyUrl"></span>
+            </div>
+            <div class="stats-row">
+              <div class="stat"><span class="stat-val" id="processedCount">0</span><span class="stat-key">Processed</span></div>
+              <div class="stat"><span class="stat-val" id="connectedCount">0</span><span class="stat-key">Connected</span></div>
+              <div class="stat"><span class="stat-val" id="skippedCount">0</span><span class="stat-key">Skipped</span></div>
+              <div class="stat"><span class="stat-val" id="errorCount">0</span><span class="stat-key">Errors</span></div>
+            </div>
+            <div id="skipReasonsSection" class="skip-breakdown" style="display: none;">
+              Pending <span id="skipPending">0</span> &middot;
+              Follow <span id="skipFollowOnly">0</span> &middot;
+              No Button <span id="skipNoButton">0</span> &middot;
+              Connected <span id="skipConnected">0</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-label">Settings</div>
+            <div class="setting-group">
+              <div class="setting-group-label">Limits</div>
+              <div class="setting-row"><label>Profiles</label><input type="number" class="setting-input" id="profileLimit" value="0" min="0" max="1000" placeholder="0"></div>
+              <div class="setting-row"><label>Pages</label><input type="number" class="setting-input" id="pageLimit" value="0" min="0" max="100" placeholder="0"></div>
+              <div class="setting-hint">0 = no limit</div>
+            </div>
+            <div class="setting-group">
+              <div class="setting-group-label">Delay</div>
+              <div class="setting-row"><label>Min (ms)</label><input type="number" class="setting-input" id="minDelay" value="2000" min="500" max="30000"></div>
+              <div class="setting-row"><label>Max (ms)</label><input type="number" class="setting-input" id="maxDelay" value="8000" min="1000" max="60000"></div>
+              <div class="setting-hint">Random delay between each profile</div>
+            </div>
+            <div class="setting-group">
+              <div class="setting-group-label">Behavior</div>
+              <div class="setting-row"><label>Skip already connected</label><div class="toggle active" id="skipConnectedToggle"></div></div>
+              <div class="setting-row"><label>Auto scroll to load all</label><div class="toggle active" id="autoScrollToggle"></div></div>
+            </div>
+          </div>
+
+          <div class="card" id="failedProfilesSection">
+            <div class="failed-header">
+              <div class="failed-count">Failed <strong id="failedCountBadge">0</strong></div>
+              <div class="failed-actions">
+                <button id="exportFailedBtn">Export</button>
+                <button id="clearFailedBtn">Clear</button>
+              </div>
+            </div>
+            <div class="failed-list" id="failedProfilesList">
+              <div class="failed-empty">No failed profiles</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="controls">
+              <button class="btn btn-start" id="startBtn">Start</button>
+              <button class="btn btn-stop" id="stopBtn" disabled>Stop</button>
+            </div>
+            <div class="page-info" id="pageInfo" style="display: none;">
+              Page <span id="currentPage">1</span> / <span id="totalPages">1</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="footer">
+        by <a href="https://atrey.dev" target="_blank">atrey.dev</a> &middot; TEST MODE
+      </div>
+    </div>
+
+    <!-- Right: Test Console & API -->
+    <div class="test-console">
+      <div class="console-header">
+        <h2>LICON Test Console</h2>
+        <span class="console-badge">CLAUDE CODE</span>
+      </div>
+
+      <div class="console-tabs">
+        <div class="console-tab active" data-tab="api">API</div>
+        <div class="console-tab" data-tab="log">Log</div>
+      </div>
+
+      <!-- API Tab -->
+      <div class="console-panel active" id="tab-api">
+        <div class="api-section">
+          <div class="api-section-title">Status</div>
+          <button class="api-btn" onclick="runAPI('snapshot')"><span class="fn">licon.snapshot()</span><span class="desc">- full state dump</span></button>
+          <button class="api-btn" onclick="runAPI('getStatus')"><span class="fn">licon.getStatus()</span><span class="desc">- running state + stats</span></button>
+          <button class="api-btn" onclick="runAPI('getSettings')"><span class="fn">licon.getSettings()</span><span class="desc">- current settings</span></button>
+          <button class="api-btn" onclick="runAPI('listLinkedInTabs')"><span class="fn">licon.listLinkedInTabs()</span><span class="desc">- find LinkedIn tabs</span></button>
+        </div>
+        <div class="api-section">
+          <div class="api-section-title">Actions</div>
+          <button class="api-btn" onclick="runAPI('start')"><span class="fn">licon.start()</span><span class="desc">- start automation</span></button>
+          <button class="api-btn" onclick="runAPI('stop')"><span class="fn">licon.stop()</span><span class="desc">- stop automation</span></button>
+          <button class="api-btn" onclick="runAPI('resetStats')"><span class="fn">licon.resetStats()</span><span class="desc">- clear counters</span></button>
+        </div>
+        <div class="api-section">
+          <div class="api-section-title">Failed Profiles</div>
+          <button class="api-btn" onclick="runAPI('getFailedProfiles')"><span class="fn">licon.getFailedProfiles()</span><span class="desc">- list failures</span></button>
+          <button class="api-btn" onclick="runAPI('clearFailedProfiles')"><span class="fn">licon.clearFailedProfiles()</span><span class="desc">- clear failures</span></button>
+        </div>
+      </div>
+
+      <!-- Log Tab -->
+      <div class="console-panel" id="tab-log">
+        <div id="logOutput"></div>
+      </div>
+
+      <!-- JS Input -->
+      <div class="console-input-row">
+        <input class="console-input" id="jsInput" placeholder="await licon.snapshot()" spellcheck="false">
+        <button class="console-run-btn" id="runBtn">Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load the original sidepanel.js (reuse all UI logic) -->
+  <script src="../ui/sidepanel.js"></script>
+  <!-- Load test bridge (patches init + adds window.licon API) -->
+  <script src="test-bridge.js"></script>
+</body>
+</html>

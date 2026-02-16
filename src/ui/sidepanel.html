@@ -535,6 +535,134 @@
 
     .intro-btn:hover { background: #333; }
 
+    /* Tab bar */
+    .tab-bar {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .tab-bar button {
+      flex: 1;
+      padding: 12px 0;
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-bar button.active {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-bar button:hover:not(.active) {
+      color: var(--text-secondary);
+    }
+
+    /* Engagement tab styles */
+    .engage-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      transition: border-color 0.15s;
+    }
+
+    .engage-input:focus {
+      outline: none;
+      border-color: var(--text);
+    }
+
+    .engage-input::placeholder { color: var(--text-dim); }
+
+    .engage-select {
+      width: 100%;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236b6b6b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    .engage-select:focus {
+      outline: none;
+      border-color: var(--text);
+    }
+
+    .engage-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .engage-row .engage-input,
+    .engage-row .engage-select {
+      flex: 1;
+    }
+
+    .engage-btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .engage-btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .engage-btn-primary:hover:not(:disabled) { background: #333; }
+    .engage-btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .engage-btn-secondary {
+      background: var(--bg);
+      color: var(--text-secondary);
+      border: 1.5px solid var(--border);
+    }
+
+    .engage-btn-secondary:hover:not(:disabled) {
+      border-color: var(--text-dim);
+      color: var(--text);
+    }
+
+    .engage-status {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 8px;
+    }
+
+    .engage-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      margin-top: 12px;
+    }
+
+    .engage-field-label:first-child { margin-top: 0; }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -544,7 +672,13 @@
 </head>
 <body>
 
+  <div class="tab-bar">
+    <button id="tabConnect" class="active">Connect</button>
+    <button id="tabEngage">Engage</button>
+  </div>
+
   <div class="content" id="mainContent">
+    <div id="connectTab">
     <div id="notLinkedInSection" class="intro" style="display: none;">
 
       <div class="card intro-hero">
@@ -709,6 +843,68 @@
       </div>
 
     </div>
+    </div><!-- /connectTab -->
+
+    <div id="engageTab" style="display: none;">
+
+      <!-- Voice Training -->
+      <div class="card">
+        <div class="card-label">Voice Training</div>
+        <div class="engage-status" id="voiceStatus">Not trained yet</div>
+        <div class="engage-field-label">Comments to analyze</div>
+        <div class="engage-row">
+          <input type="number" class="setting-input" id="commentCountInput" value="15" min="5" max="50" style="width:64px;">
+          <button class="engage-btn engage-btn-primary" id="trainVoiceBtn" style="flex:1;">Train on My Comments</button>
+        </div>
+      </div>
+
+      <!-- AI Provider Settings -->
+      <div class="card">
+        <div class="card-label">AI Provider</div>
+
+        <div class="engage-field-label">Provider</div>
+        <select class="engage-select" id="llmProvider">
+          <option value="openai">OpenAI</option>
+          <option value="gemini">Gemini</option>
+          <option value="anthropic">Claude</option>
+        </select>
+
+        <div class="engage-field-label">API Key</div>
+        <input type="password" class="engage-input" id="llmApiKey" placeholder="Enter your API key">
+
+        <div class="engage-field-label">Model</div>
+        <select class="engage-select" id="llmModel">
+          <option value="gpt-4o-mini">GPT-4o Mini</option>
+          <option value="gpt-4o">GPT-4o</option>
+          <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+          <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
+        </select>
+
+        <div class="setting-row" style="margin-top:14px;">
+          <label>Auto-post replies</label>
+          <div class="toggle" id="autoPostToggle"></div>
+        </div>
+
+        <div class="engage-row" style="margin-top:14px;">
+          <button class="engage-btn engage-btn-secondary" id="testConnectionBtn" style="flex:1;">Test</button>
+          <button class="engage-btn engage-btn-primary" id="saveEngagementBtn" style="flex:1;">Save</button>
+        </div>
+      </div>
+
+      <!-- Activity Log -->
+      <div class="card">
+        <div class="failed-header">
+          <div class="failed-count">Activity <strong id="engagementLogCount">0</strong></div>
+          <div class="failed-actions">
+            <button id="clearLogBtn">Clear</button>
+          </div>
+        </div>
+        <div class="failed-list" id="engagementLogList">
+          <div class="failed-empty">No activity yet</div>
+        </div>
+      </div>
+
+    </div><!-- /engageTab -->
   </div>
 
   <div class="footer">
@@ -716,5 +912,6 @@
   </div>
 
   <script src="sidepanel.js"></script>
+  <script src="../engagement/engagement-panel.js"></script>
 </body>
 </html>
