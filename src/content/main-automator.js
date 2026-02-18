@@ -766,7 +766,13 @@ class LiconMainAutomator {
       // Scroll profile into view first
       profile.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       await this.sleep(this.randomDelay(500, 1000));
-      
+
+      // Visit-only mode: just open the profile in a background tab, skip connecting
+      if (this.settings.visitOnly) {
+        await this.handleVisitOnly(profile);
+        return;
+      }
+
       // Process based on button type
       const btn = profile.buttonText.toLowerCase();
 
@@ -896,6 +902,15 @@ class LiconMainAutomator {
   async handleFollowProfile(profile) {
     console.log(`🔗 LICON: ${profile.name} (${profile.buttonText}) - opening profile for More → Connect...`);
     await this.openProfileForConnect(profile);
+  }
+
+  async handleVisitOnly(profile) {
+    console.log(`👁️ LICON: Visit-only mode — visiting ${profile.name}'s profile`);
+    await this.sendMessage({
+      type: 'PROFILE_VISIT',
+      data: { profileUrl: profile.profileUrl }
+    });
+    this.updateStats({ attempted: true, successful: true });
   }
 
   async openProfileForConnect(profile) {

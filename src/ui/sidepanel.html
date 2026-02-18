@@ -325,6 +325,38 @@
 
     .toggle.active::after { transform: translateX(16px); }
 
+    /* Sub-tab bar (pill-style segmented control) */
+    .sub-tab-bar {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--surface);
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    .sub-tab-bar button {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-radius: 7px;
+      transition: all 0.15s;
+    }
+
+    .sub-tab-bar button.active {
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .sub-tab-bar button:hover:not(.active) {
+      color: var(--text-secondary);
+    }
+
     /* Failed Profiles */
     .failed-header {
       display: flex;
@@ -663,6 +695,14 @@
 
     .engage-field-label:first-child { margin-top: 0; }
 
+    /* Section description */
+    .section-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -684,7 +724,7 @@
       <div class="card intro-hero">
         <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
         <h2>LICON</h2>
-        <p>Automate LinkedIn connection requests from any company page or search results.</p>
+        <p>Automate LinkedIn connection requests and auto-accept incoming invitations.</p>
       </div>
 
       <div class="card">
@@ -722,6 +762,9 @@
           <br><br>
           <strong>Search results</strong><br>
           <code>linkedin.com/search/results/people?...</code>
+          <br><br>
+          <strong>Invitation manager</strong><br>
+          <code>linkedin.com/mynetwork/invitation-manager</code>
         </div>
       </div>
 
@@ -731,7 +774,14 @@
 
     </div>
 
-    <div id="appSection">
+    <!-- Connect sub-tabs -->
+    <div class="sub-tab-bar" id="connectSubTabBar" style="display: none;">
+      <button id="subTabSend" class="active">Send</button>
+      <button id="subTabAccept">Accept</button>
+    </div>
+
+    <!-- SEND section -->
+    <div id="appSection" style="display: none;">
 
       <!-- Status + Stats -->
       <div class="card">
@@ -843,9 +893,103 @@
       </div>
 
     </div>
+
+    <!-- ACCEPT section -->
+    <div id="acceptSection" style="display: none;">
+
+      <!-- Status + Stats -->
+      <div class="card">
+        <div class="status-bar">
+          <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
+          <div class="status-dot" id="acceptStatusDot"></div>
+          <span class="status-text" id="acceptStatusText">Ready</span>
+          <button class="btn-reset" id="acceptResetBtn" title="Reset stats">↺</button>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat">
+            <span class="stat-val" id="acceptProcessedCount">0</span>
+            <span class="stat-key">Processed</span>
+          </div>
+          <div class="stat">
+            <span class="stat-val" id="acceptAcceptedCount">0</span>
+            <span class="stat-key">Accepted</span>
+          </div>
+          <div class="stat">
+            <span class="stat-val" id="acceptSkippedCount">0</span>
+            <span class="stat-key">Skipped</span>
+          </div>
+          <div class="stat">
+            <span class="stat-val" id="acceptErrorCount">0</span>
+            <span class="stat-key">Errors</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settings -->
+      <div class="card">
+        <div class="card-label">Settings</div>
+
+        <div class="setting-group">
+          <div class="setting-group-label">Types</div>
+          <div class="setting-row">
+            <label>Connection requests</label>
+            <div class="toggle active" id="acceptConnectionsToggle"></div>
+          </div>
+          <div class="setting-row">
+            <label>Newsletter invitations</label>
+            <div class="toggle" id="acceptNewslettersToggle"></div>
+          </div>
+          <div class="setting-row">
+            <label>Follow invitations</label>
+            <div class="toggle" id="acceptFollowsToggle"></div>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-group-label">Delay</div>
+          <div class="setting-row">
+            <label>Min (ms)</label>
+            <input type="number" class="setting-input" id="acceptMinDelay" value="1000" min="500" max="30000">
+          </div>
+          <div class="setting-row">
+            <label>Max (ms)</label>
+            <input type="number" class="setting-input" id="acceptMaxDelay" value="3000" min="1000" max="60000">
+          </div>
+          <div class="setting-hint">Random delay between each accept</div>
+        </div>
+
+        <div class="setting-group">
+          <div class="setting-group-label">Limit</div>
+          <div class="setting-row">
+            <label>Max invitations</label>
+            <input type="number" class="setting-input" id="acceptLimit" value="0" min="0" max="1000" placeholder="0">
+          </div>
+          <div class="setting-hint">0 = accept all</div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="card">
+        <div class="controls">
+          <button class="btn btn-start" id="acceptStartBtn">Start</button>
+          <button class="btn btn-stop" id="acceptStopBtn" disabled>Stop</button>
+        </div>
+      </div>
+
+    </div>
     </div><!-- /connectTab -->
 
     <div id="engageTab" style="display: none;">
+
+      <!-- Engage sub-tabs -->
+      <div class="sub-tab-bar">
+        <button id="subTabComment" class="active">Comment</button>
+        <button id="subTabView">View</button>
+      </div>
+
+      <!-- COMMENT section -->
+      <div id="commentSection">
 
       <!-- Voice Training -->
       <div class="card">
@@ -903,6 +1047,96 @@
           <div class="failed-empty">No activity yet</div>
         </div>
       </div>
+
+      </div><!-- /commentSection -->
+
+      <!-- VIEW section (profile visits) -->
+      <div id="viewSection" style="display: none;">
+
+        <div class="section-desc">
+          Visit profiles to appear in their "Who viewed your profile" notifications. Works on company people pages and search results.
+        </div>
+
+        <!-- Status + Stats -->
+        <div class="card">
+          <div class="status-bar">
+            <img class="logo" src="../../assets/icons/icon48.png" alt="LICON">
+            <div class="status-dot" id="viewStatusDot"></div>
+            <span class="status-text" id="viewStatusText">Ready</span>
+            <button class="btn-reset" id="viewResetBtn" title="Reset stats">↺</button>
+          </div>
+
+          <div class="stats-row">
+            <div class="stat">
+              <span class="stat-val" id="viewProcessedCount">0</span>
+              <span class="stat-key">Processed</span>
+            </div>
+            <div class="stat">
+              <span class="stat-val" id="viewVisitedCount">0</span>
+              <span class="stat-key">Visited</span>
+            </div>
+            <div class="stat">
+              <span class="stat-val" id="viewSkippedCount">0</span>
+              <span class="stat-key">Skipped</span>
+            </div>
+            <div class="stat">
+              <span class="stat-val" id="viewErrorCount">0</span>
+              <span class="stat-key">Errors</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="card">
+          <div class="card-label">Settings</div>
+
+          <div class="setting-group">
+            <div class="setting-group-label">Limits</div>
+            <div class="setting-row">
+              <label>Profiles</label>
+              <input type="number" class="setting-input" id="viewProfileLimit" value="0" min="0" max="1000" placeholder="0">
+            </div>
+            <div class="setting-row">
+              <label>Pages</label>
+              <input type="number" class="setting-input" id="viewPageLimit" value="0" min="0" max="100" placeholder="0">
+            </div>
+            <div class="setting-hint">0 = no limit</div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-label">Delay</div>
+            <div class="setting-row">
+              <label>Min (ms)</label>
+              <input type="number" class="setting-input" id="viewMinDelay" value="2000" min="500" max="30000">
+            </div>
+            <div class="setting-row">
+              <label>Max (ms)</label>
+              <input type="number" class="setting-input" id="viewMaxDelay" value="8000" min="1000" max="60000">
+            </div>
+            <div class="setting-hint">Random delay between each visit</div>
+          </div>
+
+          <div class="setting-group">
+            <div class="setting-group-label">Behavior</div>
+            <div class="setting-row">
+              <label>Auto scroll to load all</label>
+              <div class="toggle active" id="viewAutoScrollToggle"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="card">
+          <div class="controls">
+            <button class="btn btn-start" id="viewStartBtn">Start</button>
+            <button class="btn btn-stop" id="viewStopBtn" disabled>Stop</button>
+          </div>
+          <div class="page-info" id="viewPageInfo" style="display: none;">
+            Page <span id="viewCurrentPage">1</span> / <span id="viewTotalPages">1</span>
+          </div>
+        </div>
+
+      </div><!-- /viewSection -->
 
     </div><!-- /engageTab -->
   </div>

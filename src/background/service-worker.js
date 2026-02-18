@@ -26,6 +26,10 @@ class LiconBackground {
       }
     };
     this.failedProfiles = [];
+    // Accept automation state (independent of connect automation)
+    this.isAccepting = false;
+    this.acceptActiveTabId = null;
+    this.acceptStats = { processed: 0, accepted: 0, skipped: 0, errors: 0 };
     this.llmClient = new LiconLLMClient();
     this.setupListeners();
     console.log('✅ LICON: Background service worker initialized successfully');
@@ -117,6 +121,12 @@ class LiconBackground {
           sendResponse({ success: true });
           break;
 
+        case 'PROFILE_VISIT':
+          console.log('👁️ LICON: Handling profile visit:', message.data);
+          await this.handleProfileVisit(message.data);
+          sendResponse({ success: true });
+          break;
+
         case 'GET_SETTINGS':
           const settings = await this.getSettings();
           console.log('⚙️ LICON: Sending settings:', settings);
@@ -193,6 +203,39 @@ class LiconBackground {
         case 'EXPORT_FAILED_PROFILES':
           console.log('📤 LICON: Exporting failed profiles');
           sendResponse({ failedProfiles: this.failedProfiles });
+          break;
+
+        // --- Accept automation message handlers ---
+
+        case 'START_ACCEPT_AUTOMATION':
+          console.log('LICON: Starting accept automation...');
+          await this.startAcceptAutomation(message.data);
+          sendResponse({ success: true });
+          break;
+
+        case 'STOP_ACCEPT_AUTOMATION':
+          console.log('LICON: Stopping accept automation...');
+          await this.stopAcceptAutomation();
+          sendResponse({ success: true });
+          break;
+
+        case 'GET_ACCEPT_STATUS':
+          sendResponse({
+            isAccepting: this.isAccepting,
+            acceptStats: this.acceptStats
+          });
+          break;
+
+        case 'ACCEPT_PROCESSED':
+          if (message.data) {
+            this.acceptStats = { ...this.acceptStats, ...message.data };
+          }
+          sendResponse({ success: true });
+          break;
+
+        case 'RESET_ACCEPT_STATS':
+          this.acceptStats = { processed: 0, accepted: 0, skipped: 0, errors: 0 };
+          sendResponse({ success: true });
           break;
 
         // --- Engagement message handlers ---
@@ -395,6 +438,64 @@ class LiconBackground {
     this.broadcastToLinkedInTabs({ type: 'AUTOMATION_STOPPED' });
   }
 
+  async startAcceptAutomation(data) {
+    if (this.isAccepting) {
+      throw new Error('Accept automation is already running');
+    }
+
+    this.isAccepting = true;
+    this.acceptActiveTabId = data.tabId || null;
+    this.acceptStats = { processed: 0, accepted: 0, skipped: 0, errors: 0 };
+
+    if (this.acceptActiveTabId) {
+      // Inject the acceptor content script
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: this.acceptActiveTabId },
+          files: ['src/content/invitation-acceptor.js']
+        });
+      } catch (error) {
+        console.log('LICON: Acceptor script injection skipped:', error.message);
+      }
+
+      // Wait for script to initialize
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Send start message with settings
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          await chrome.tabs.sendMessage(this.acceptActiveTabId, {
+            type: 'ACCEPT_AUTOMATION_STARTED',
+            data: data.settings || {}
+          });
+          console.log('LICON: Accept automation started on tab', this.acceptActiveTabId);
+          return;
+        } catch (error) {
+          retries--;
+          if (retries > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      console.error('LICON: Failed to send start message to acceptor');
+    }
+  }
+
+  async stopAcceptAutomation() {
+    this.isAccepting = false;
+
+    if (this.acceptActiveTabId) {
+      try {
+        await chrome.tabs.sendMessage(this.acceptActiveTabId, {
+          type: 'ACCEPT_AUTOMATION_STOPPED'
+        });
+      } catch (error) {
+        // Tab may have been closed
+      }
+    }
+
+    this.acceptActiveTabId = null;
+  }
+
   updateStats(data) {
     if (data.processed) this.stats.totalProcessed++;
     if (data.attempted) this.stats.connectionsAttempted++;
@@ -478,6 +579,35 @@ class LiconBackground {
     }
   }
 
+  async handleProfileVisit(data) {
+    try {
+      const newTab = await chrome.tabs.create({
+        url: data.profileUrl,
+        active: false
+      });
+
+      const onTabUpdated = (updatedTabId, changeInfo) => {
+        if (updatedTabId === newTab.id && changeInfo.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(onTabUpdated);
+          // Wait 3-5 seconds for LinkedIn to register the view, then close
+          const visitDuration = 3000 + Math.floor(Math.random() * 2000);
+          setTimeout(() => {
+            chrome.tabs.remove(newTab.id).catch(() => {});
+          }, visitDuration);
+        }
+      };
+      chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+      // Safety timeout — clean up if tab never loads
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(onTabUpdated);
+        chrome.tabs.remove(newTab.id).catch(() => {});
+      }, 30000);
+    } catch (error) {
+      console.error('❌ LICON: Profile visit failed:', error);
+    }
+  }
+
   async handleTabUpdate(tabId, tab) {
     // Inject feed injector on LinkedIn feed pages (regardless of automation state)
     const isFeedPage = tab.url?.match(/linkedin\.com\/feed/);
@@ -490,6 +620,19 @@ class LiconBackground {
             files: ['src/engagement/feed-injector.js']
           });
         }
+      } catch (error) {
+        // Script might already be injected
+      }
+    }
+
+    // Inject acceptor on invitation manager pages when accept automation is running
+    const isInvitationManager = tab.url?.includes('/mynetwork/invitation-manager');
+    if (isInvitationManager && this.isAccepting && tabId === this.acceptActiveTabId) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['src/content/invitation-acceptor.js']
+        });
       } catch (error) {
         // Script might already be injected
       }
@@ -632,7 +775,8 @@ class LiconBackground {
         pageLimit: 0, // 0 = unlimited
         respectRateLimits: true,
         autoScroll: true,
-        skipConnected: true
+        skipConnected: true,
+        visitOnly: false
       }
     });
     return result.liconSettings;
