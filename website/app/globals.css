@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #F4F2ED;
+  --fg: #1A1A1A;
+  --muted: #8A8A8A;
+  --accent: #0A66C2;
+  --surface: #FFFFFF;
+  --border-color: rgba(0, 0, 0, 0.08);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-surface: var(--surface);
+  --color-border: var(--border-color);
+  --font-display: var(--font-doto);
+  --font-body: var(--font-outfit);
+  --font-heading: var(--font-montserrat);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* ── Hero gradient (matched from Maily) ── */
+.hero-gradient {
+  background:
+    radial-gradient(62.4% 80.1% at 52.5% 31.5%, rgb(29, 127, 255) 5.5%, rgb(142, 208, 242) 78.5%);
+}
+
+/* ── Floating animation for 3D objects ── */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px) rotate(var(--rotate)); }
+  50% { transform: translateY(-14px) rotate(var(--rotate)); }
+}
+@keyframes float-medium {
+  0%, 100% { transform: translateY(0px) rotate(var(--rotate)); }
+  50% { transform: translateY(-10px) rotate(var(--rotate)); }
+}
+
+.float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+.float-medium {
+  animation: float-medium 4.5s ease-in-out infinite;
+}
+
+/* ── Decorative ring ── */
+.hero-ring {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+}
+
+/* ── Dot grid background ── */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ── Halftone decorative pattern ── */
+.halftone {
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.13) 2px, transparent 2px);
+  background-size: 10px 10px;
+  mask-image: radial-gradient(ellipse 80% 80% at 55% 50%, black 15%, transparent 65%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 80% at 55% 50%, black 15%, transparent 65%);
+}
+
+/* ── Animations ── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.anim-fade-up {
+  opacity: 0;
+  animation: fade-in-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.anim-fade {
+  opacity: 0;
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+.anim-delay-1 { animation-delay: 150ms; }
+.anim-delay-2 { animation-delay: 300ms; }
+.anim-delay-3 { animation-delay: 450ms; }
+.anim-delay-4 { animation-delay: 600ms; }
+.anim-delay-5 { animation-delay: 750ms; }
+
+/* ── Seesaw push-button animation for organize tags ── */
+@keyframes seesaw-down {
+  0%, 100% { transform: translateY(0); }
+  20% { transform: translateY(8px); }
+  30% { transform: translateY(-2px); }
+  40%, 50% { transform: translateY(0); }
+  70% { transform: translateY(-8px); }
+  80% { transform: translateY(2px); }
+  90% { transform: translateY(0); }
+}
+@keyframes seesaw-up {
+  0%, 100% { transform: translateY(0); }
+  20% { transform: translateY(-8px); }
+  30% { transform: translateY(2px); }
+  40%, 50% { transform: translateY(0); }
+  70% { transform: translateY(8px); }
+  80% { transform: translateY(-2px); }
+  90% { transform: translateY(0); }
+}
+.seesaw-a {
+  animation: seesaw-down 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+.seesaw-b {
+  animation: seesaw-up 2.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+/* ── Testimonial marquee ── */
+@keyframes marquee-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes marquee-right {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+.marquee-left {
+  animation: marquee-left 35s linear infinite;
+}
+.marquee-right {
+  animation: marquee-right 35s linear infinite;
+}
+
+/* ── Scroll-triggered reveal ── */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.scroll-reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
