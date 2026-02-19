@@ -23,6 +23,9 @@ export const metadata: Metadata = {
   title: "LICON — LinkedIn Connector Toolkit",
   description:
     "Automate LinkedIn connections, engagement, and profile visits. Grow your professional network on autopilot with LICON.",
+  verification: {
+    google: "vfl_Z9jHpXJBVtYEGNKNsxdFq_9HMWyKZNYF8ZuH4WE",
+  },
 };
 
 export default function RootLayout({
